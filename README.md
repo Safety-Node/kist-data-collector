@@ -112,7 +112,7 @@ alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 ## Usage
 
 ```bash
-./build/kist_data_collector [config/config.yaml]
+./build/kist_data_collector
 ```
 
 - Streams are switched in `config/config.yaml` — every section has
@@ -208,7 +208,7 @@ Inside the container:
 ```bash
 # 1. record — Ctrl-C to stop (or prefix: timeout --signal=INT 12 ...)
 #    (recording only some cameras? comment the rest out of realsense_cameras)
-./build/kist_data_collector config/config.yaml
+./build/kist_data_collector
 S=$(ls -dt sessions/*/ | head -1)/head
 
 # 2. export the whole session to mp4 — one color (remux) + one depth
