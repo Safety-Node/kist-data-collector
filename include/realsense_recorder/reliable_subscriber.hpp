@@ -5,25 +5,30 @@
 // ChannelSubscriber, which creates BEST_EFFORT readers and exposes no QoS —
 // a frame lost on the wire is simply gone. The SDK's writers DO offer
 // RELIABLE (probed empirically), so a reader that requests it gets RTPS
-// retransmission and recovers isolated wire losses — exactly the residual
-// ~0.1% profile the tuned stack still showed. Only the collector changes;
-// other consumers keep their best-effort readers (QoS is per-reader).
+// retransmission and recovers isolated wire losses. Only the collector
+// changes; other consumers keep their best-effort readers (QoS is per-reader).
 //
-// QoS: Reliable + KeepAll (samples are drained immediately on the listener
-// thread, so the depth never builds) + a resource cap as backstop. With
-// reliable=false it degrades to a best-effort KeepLast reader — the safety
-// valve if a transmitter ever stops offering RELIABLE (a reliable reader
-// would then match nothing at all).
+// Delivery is a waitset + owned take-thread, NOT a listener: detaching a
+// ddscxx 0.10 listener while data is in flight races EntityDelegate::
+// prevent_callbacks and hits an assertion (observed as a shutdown core
+// dump under full camera load). With a waitset the teardown is trivially
+// safe: stop the thread, then close the reader — no callback machinery.
+//
+// QoS: Reliable + KeepAll (drained continuously by the take-thread) + a
+// resource cap as backstop. reliable=false degrades to best-effort
+// KeepLast — the safety valve if a transmitter ever stops offering
+// RELIABLE (a reliable reader would then match nothing at all).
 //
 // All instances share one DomainParticipant, created on first use; it reads
 // CYCLONEDDS_URI, which main routes to config/cyclonedds.xml (NIC + buffers).
 
 #include <dds/dds.hpp>
 
+#include <atomic>
 #include <functional>
 #include <iostream>
-#include <memory>
 #include <string>
+#include <thread>
 
 namespace kist {
 
@@ -55,49 +60,64 @@ public:
                     << dds::core::policy::ResourceLimits(4096);
             else
                 qos << dds::core::policy::History::KeepLast(30);
+            reader_   = dds::sub::DataReader<MsgT>(sub_, topic_, qos);
             map_      = map;
             on_frame_ = std::move(on_frame);
-            listener_ = std::make_unique<Listener>(this);
-            reader_   = dds::sub::DataReader<MsgT>(
-                sub_, topic_, qos, listener_.get(),
-                dds::core::status::StatusMask::data_available());
+
+            cond_ = dds::sub::cond::ReadCondition(
+                reader_, dds::sub::status::DataState::any());
+            waitset_.attach_condition(cond_);
         } catch (const std::exception& e) {
             std::cerr << "[ReliableSubscriber] start failed on " << topic_name
                       << ": " << e.what() << "\n";
             return false;
         }
+        running_ = true;
+        thread_  = std::thread(&ReliableSubscriber::run, this);
         std::cout << "[ReliableSubscriber] " << (reliable ? "RELIABLE" : "best-effort")
                   << " reader on " << topic_name << "\n";
         return true;
     }
 
     void stop() {
-        if (reader_ != dds::core::null) {
-            reader_.listener(nullptr, dds::core::status::StatusMask::none());
-            reader_.close();
-            reader_ = dds::core::null;
-        }
-        listener_.reset();
+        if (!thread_.joinable()) return;
+        running_ = false;
+        thread_.join();       // take-thread gone -> nothing touches the reader
+        drain();              // last sweep for samples that landed meanwhile
+        waitset_.detach_condition(cond_);
+        reader_.close();
+        reader_ = dds::core::null;
     }
 
 private:
-    struct Listener : public dds::sub::NoOpDataReaderListener<MsgT> {
-        explicit Listener(ReliableSubscriber* o) : owner(o) {}
-        void on_data_available(dds::sub::DataReader<MsgT>& reader) override {
-            auto samples = reader.take();
-            for (const auto& s : samples)
-                if (s.info().valid())
-                    owner->on_frame_(owner->map_(s.data()));
+    void run() {
+        while (running_.load(std::memory_order_relaxed)) {
+            try {
+                waitset_.wait(dds::core::Duration::from_millisecs(100));
+            } catch (const dds::core::TimeoutError&) {
+                continue;  // periodic running_ check
+            }
+            drain();
         }
-        ReliableSubscriber* owner;
-    };
+    }
 
-    dds::topic::Topic<MsgT>    topic_  = dds::core::null;
-    dds::sub::Subscriber       sub_    = dds::core::null;
-    dds::sub::DataReader<MsgT> reader_ = dds::core::null;
-    std::unique_ptr<Listener>  listener_;
-    MapFn                      map_ = nullptr;
-    OnFrameFn                  on_frame_;
+    void drain() {
+        auto samples = reader_.take();
+        for (const auto& s : samples)
+            if (s.info().valid())
+                on_frame_(map_(s.data()));
+    }
+
+    dds::topic::Topic<MsgT>      topic_  = dds::core::null;
+    dds::sub::Subscriber         sub_    = dds::core::null;
+    dds::sub::DataReader<MsgT>   reader_ = dds::core::null;
+    dds::sub::cond::ReadCondition cond_  = dds::core::null;
+    dds::core::cond::WaitSet     waitset_;
+
+    std::thread       thread_;
+    std::atomic<bool> running_{false};
+    MapFn             map_ = nullptr;
+    OnFrameFn         on_frame_;
 };
 
 } // namespace kist
