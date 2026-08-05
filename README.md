@@ -1,96 +1,13 @@
 # kist-data-collector
 
-Storage-side recorder for the KIST G1 stack — runs on the data-storage
-processor next to the control processor and persists every DDS stream of a
-recording session **without losing frames**: the
+Storage-side recorder for the KIST G1 — records the
 [kist-ext-sensor-io](https://github.com/Safety-Node/kist-ext-sensor-io)
-cameras (H.264 color + RVL depth, 30 fps each), the robot's `rt/lowstate`
-(~1 kHz) and the Dex3 hands (~830 Hz each). Offline exporters turn a session
-into playable videos or per-frame training images.
+cameras (H.264 color + RVL depth), `rt/lowstate` and the Dex3 hands into one
+**lossless** session. Exporters turn a session into videos or training images.
 
 ## Architecture
 
 [![Architecture](docs/kist-data-collector.svg)](docs/kist-data-collector.svg)
-
-<details>
-<summary>text version</summary>
-
-```
-          NX — kist-ext-sensor-io Tx                    G1 robot firmware
-        H.264 color / RVL depth per camera         rt/lowstate   rt/dex3/{left,right}/state
-                      │        (writers offer RELIABLE; datagrams MTU-capped)
-   ═══════════════════╪═════════════ robot LAN ══════════════╪═══════════════
-                      │                                      │
- kist_data_collector  ▼                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ main — reads config.yaml, routes config/cyclonedds.xml via CYCLONEDDS_URI    │
-│        (the SDK gets an empty interface — see "Deployment tuning"),          │
-│        starts one recorder per stream, prints 1 Hz per-stream counters       │
-│                                                                              │
-│  RealsenseRecorder (one per camera)    LowstateRecorder     Dex3Recorder ×2  │
-│  ┌────────────────────────────────┐    ┌────────────────┐  ┌────────────────┐│
-│  │ ReliableSubscriber ×2          │    │ SDK subscriber │  │ SDK subscriber ││
-│  │ (color, depth — RELIABLE QoS,  │    │ (rt/lowstate)  │  │ (per hand)     ││
-│  │  ddscxx waitset + take thread) │    └───────┬────────┘  └───────┬────────┘│
-│  └───────┬──────────────┬─────────┘            │                   │         │
-│          ▼              ▼         push = copy only, never blocks             │
-│     RecordQueue    RecordQueue              RecordQueue      RecordQueue ×2  │
-│          │              │     bounded · drop-counted · drained on close      │
-│          ▼              ▼         one writer thread per stream               │
-│    BlobRecorder   BlobRecorder              RowRecorder      RowRecorder ×2  │
-│          ▼              ▼                        ▼                 ▼         │
-│    color.h264      depth.rvl              lowstate.csv    hand_{left,right}  │
-│    color.idx.csv   depth.idx.csv                                 .csv        │
-└─────────────────────── sessions/<stamp>/ + meta.yaml ────────────────────────┘
-                      │ offline, per session
-        export_session_mp4 (eyes) · export_session_images (training)
-        — one color + one depth worker thread per camera, all cameras at once
-```
-
-</details>
-
-Every stream owns its queue and writer thread — a slow disk moment on one
-stream cannot back-pressure another — and every hand-off is counted, so
-losslessness is a measured property, not an assumption (see the counters
-below).
-
-## Design: how frames reach disk without loss
-
-Two decisions define the receive path.
-
-**No polling.** kist-ext-sensor-io hands consumers a latest-wins
-`DataBuffer` — writers overwrite, readers snapshot. That contract is right
-for control/inference (only the newest frame matters) and wrong for
-recording: any poll that lands after two `SetData()` calls has already lost
-a frame, at every polling rate. So every stream is delivered event-wise —
-each message enters a bounded queue in the very call that receives it, and
-a dedicated writer thread persists it. Loss between reception and disk is
-impossible by construction (and still counted, see below).
-
-**Own readers for the cameras.** The SDK's `ChannelSubscriber` creates
-BEST_EFFORT readers with no QoS hook, so a frame lost on the wire was gone
-for good. The camera subscribers were therefore replaced with the
-collector's own ddscxx readers (`realsense_recorder/reliable_subscriber.hpp`)
-that request **RELIABLE** — the transmitter's writers offer it — so isolated
-wire losses are recovered by RTPS retransmission. lowstate and the hands
-stay on the SDK path (their small ~1-2 KB messages measured zero loss in
-every run); their `set_on_frame`-style callbacks do the same copy-and-queue.
-
-All remaining loss surfaces are counted, per stream, live at 1 Hz and in
-the session summary:
-
-- `dropped` — frames the recorder's queue refused (disk stalled longer than
-  `queue_capacity`/fps seconds).
-- `write_errors` — frames the filesystem refused (disk full, I/O error).
-- `wire_gaps` — holes in the publisher's `seq` before arrival (Tx→Rx loss).
-  Recorded so post-hoc analysis knows; additionally the camera readers
-  request RELIABLE QoS (`realsense_cameras.reliable`, default true) so
-  isolated wire losses are recovered by RTPS retransmission — the writer's
-  shallow history (keep-last-1, one frame period) bounds the recovery
-  window, so sustained congestion can still gap.
-
-**`dropped` and `write_errors` both 0 means every frame that reached this
-process is on disk.**
 
 ## Storage format
 
@@ -206,6 +123,14 @@ match the transmitter's camera names). The collector records every enabled
 stream into one session dir, prints per-second per-stream
 `rx/wr fps, drop, gap, MB`, and on Ctrl-C drains the queues, appends the
 per-stream counters to `meta.yaml`, and exits.
+
+Counter legend (live and in `meta.yaml`):
+
+- `dropped` / `write_errors` — recorder-side loss (queue refused / disk
+  refused). **Both 0 = every received frame is on disk.**
+- `wire_gaps` — frames that never arrived (holes in the publisher's `seq`).
+  Camera readers request RELIABLE QoS (`realsense_cameras.reliable`), so
+  isolated wire losses are recovered by retransmission before they count.
 
 ## Deployment tuning (robot LAN)
 
