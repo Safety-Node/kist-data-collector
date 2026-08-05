@@ -111,21 +111,20 @@ alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 
 ## Usage
 
+Set up the config once before recording:
+
+- `config/config.yaml` — switch streams on/off (`enabled` per section);
+  camera `name`s must match the transmitter's.
+- `config/cyclonedds.xml` — set the NIC (default `lo` for same-machine
+  testing; the robot-LAN interface, e.g. `eno2`, for deployment).
+- All keys: [docs/configuration.md](docs/configuration.md).
+
 ```bash
 ./build/kist_data_collector
 ```
 
-- Streams are switched in `config/config.yaml` — every section has
-  `enabled` + `queue_capacity`; camera `name`s must match the transmitter's.
-  All keys (and the `cyclonedds.xml` transport settings):
-  [docs/configuration.md](docs/configuration.md).
-- Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
-  status once a second and writing the final counters to `meta.yaml`.
-
-Healthy output: `rx` = `wr`, and `drop` / `werr` / `gap` all 0 —
-`drop`/`werr` are recorder-side loss (queue / disk; 0 means every received
-frame is on disk), `gap` counts frames that never arrived (the camera
-readers recover isolated wire losses via RELIABLE retransmission).
+Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
+status once a second; the final counters land in `meta.yaml`.
 
 ## Deployment tuning (robot LAN)
 
