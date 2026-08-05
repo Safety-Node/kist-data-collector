@@ -1,33 +1,83 @@
 # kist-data-collector
 
 Storage-side recorder for the KIST G1 stack — runs on the data-storage
-processor next to the control processor, subscribes to the DDS streams
-published by [kist-ext-sensor-io](https://github.com/Safety-Node/kist-ext-sensor-io),
-and persists them **without losing frames**. Camera streams (the hard case:
-3 cameras × color + depth × 30 fps) are implemented first; other streams
-(UWB, robot state) slot into the same session layout later.
+processor next to the control processor and persists every DDS stream of a
+recording session **without losing frames**: the
+[kist-ext-sensor-io](https://github.com/Safety-Node/kist-ext-sensor-io)
+cameras (H.264 color + RVL depth, 30 fps each), the robot's `rt/lowstate`
+(~1 kHz) and the Dex3 hands (~830 Hz each). Offline exporters turn a session
+into playable videos or per-frame training images.
 
-## Why not read the DataBuffer?
+## Architecture
 
-kist-ext-sensor-io hands consumers a latest-wins `DataBuffer` — writers
-overwrite, readers snapshot. That contract is right for control/inference
-(only the newest frame matters) and wrong for recording: any poll that lands
-after two `SetData()` calls has already lost a frame, at every polling rate.
+[![Architecture](docs/kist-data-collector.svg)](docs/kist-data-collector.svg)
 
-The recorder therefore taps the subscribers' public `set_on_frame()` hook
-instead, which fires on the DDS receive thread once per delivered message:
+<details>
+<summary>text version</summary>
 
 ```
-DDS topic ─> ColorSubscriber ──on_frame──> bounded queue ─> writer thread ─> color.h264 + color.idx.csv
-DDS topic ─> DepthSubscriber ──on_frame──> bounded queue ─> writer thread ─> depth.rvl  + depth.idx.csv
-             (kist-ext-sensor-io,          (copy only,      (append verbatim
-              unmodified)                   never blocks)     + CSV index, flush)
+          NX — kist-ext-sensor-io Tx                    G1 robot firmware
+        H.264 color / RVL depth per camera         rt/lowstate   rt/dex3/{left,right}/state
+                      │        (writers offer RELIABLE; datagrams MTU-capped)
+   ═══════════════════╪═════════════ robot LAN ══════════════╪═══════════════
+                      │                                      │
+ kist_data_collector  ▼                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ main — reads config.yaml, routes config/cyclonedds.xml via CYCLONEDDS_URI    │
+│        (the SDK gets an empty interface — see "Deployment tuning"),          │
+│        starts one recorder per stream, prints 1 Hz per-stream counters       │
+│                                                                              │
+│  RealsenseRecorder (one per camera)    LowstateRecorder     Dex3Recorder ×2  │
+│  ┌────────────────────────────────┐    ┌────────────────┐  ┌────────────────┐│
+│  │ ReliableSubscriber ×2          │    │ SDK subscriber │  │ SDK subscriber ││
+│  │ (color, depth — RELIABLE QoS,  │    │ (rt/lowstate)  │  │ (per hand)     ││
+│  │  ddscxx waitset + take thread) │    └───────┬────────┘  └───────┬────────┘│
+│  └───────┬──────────────┬─────────┘            │                   │         │
+│          ▼              ▼         push = copy only, never blocks             │
+│     RecordQueue    RecordQueue              RecordQueue      RecordQueue ×2  │
+│          │              │     bounded · drop-counted · drained on close      │
+│          ▼              ▼         one writer thread per stream               │
+│    BlobRecorder   BlobRecorder              RowRecorder      RowRecorder ×2  │
+│          ▼              ▼                        ▼                 ▼         │
+│    color.h264      depth.rvl              lowstate.csv    hand_{left,right}  │
+│    color.idx.csv   depth.idx.csv                                 .csv        │
+└─────────────────────── sessions/<stamp>/ + meta.yaml ────────────────────────┘
+                      │ offline, per session
+        export_session_mp4 (eyes) · export_session_images (training)
+        — one color + one depth worker thread per camera, all cameras at once
 ```
 
-The hand-off is a synchronous call chain on the receive thread (the frame is
-queued in the same call that writes the buffer), so buffer→queue loss is
-impossible by construction. The remaining loss surfaces are all counted, per
-stream, live at 1 Hz and in the session summary:
+</details>
+
+Every stream owns its queue and writer thread — a slow disk moment on one
+stream cannot back-pressure another — and every hand-off is counted, so
+losslessness is a measured property, not an assumption (see the counters
+below).
+
+## Design: how frames reach disk without loss
+
+Two decisions define the receive path.
+
+**No polling.** kist-ext-sensor-io hands consumers a latest-wins
+`DataBuffer` — writers overwrite, readers snapshot. That contract is right
+for control/inference (only the newest frame matters) and wrong for
+recording: any poll that lands after two `SetData()` calls has already lost
+a frame, at every polling rate. So every stream is delivered event-wise —
+each message enters a bounded queue in the very call that receives it, and
+a dedicated writer thread persists it. Loss between reception and disk is
+impossible by construction (and still counted, see below).
+
+**Own readers for the cameras.** The SDK's `ChannelSubscriber` creates
+BEST_EFFORT readers with no QoS hook, so a frame lost on the wire was gone
+for good. The camera subscribers were therefore replaced with the
+collector's own ddscxx readers (`realsense_recorder/reliable_subscriber.hpp`)
+that request **RELIABLE** — the transmitter's writers offer it — so isolated
+wire losses are recovered by RTPS retransmission. lowstate and the hands
+stay on the SDK path (their small ~1-2 KB messages measured zero loss in
+every run); their `set_on_frame`-style callbacks do the same copy-and-queue.
+
+All remaining loss surfaces are counted, per stream, live at 1 Hz and in
+the session summary:
 
 - `dropped` — frames the recorder's queue refused (disk stalled longer than
   `queue_capacity`/fps seconds).
@@ -135,7 +185,7 @@ thirdparty repos into place, then `cmake -B build && cmake --build build`:
 
 ```bash
 git clone https://github.com/Safety-Node/kist-ext-sensor-io.git thirdparty/kist-ext-sensor-io
-git -C thirdparty/kist-ext-sensor-io checkout d97b554b6ac898e1cea5e478a467bf3e8357766c
+git -C thirdparty/kist-ext-sensor-io checkout a8de3ae293ab55354fc28b054146f0d040ca7e55
 
 git clone https://github.com/unitreerobotics/unitree_sdk2.git \
     thirdparty/kist-ext-sensor-io/thirdparty/unitree_sdk2
@@ -189,27 +239,32 @@ sudo sysctl --system
 asks, and this image's CycloneDDS is the one asking. `rmem_default` is left
 alone since the request is explicit.)
 
-The **sender** (the machine running kist-ext-sensor-io's transmitter) wants
-the mirror-image tuning (`net.core.wmem_max` + `SocketSendBufferSize`), and
-it has the same SDK env-override problem: a `CYCLONEDDS_URI` export is
-ignored while the transmitter passes a non-empty interface. Until
-kist-ext-sensor-io builds its URI the way this repo does, the code-free
-workaround on the sender is: set `network_interface: ""` in its config.yaml
-and put BOTH the interface and the send tuning into the env, e.g.
-`CYCLONEDDS_URI='<CycloneDDS><Domain id="any"><General><Interfaces>
-<NetworkInterface name="eth0"/></Interfaces></General><Internal>
-<SocketSendBufferSize min="16MB"/></Internal></Domain></CycloneDDS>'`.
+The **sender** side is handled by kist-ext-sensor-io itself since commit
+`d97b554`: its runners route `config/cyclonedds.xml` the same way (the XML
+carries the NIC, `SocketSendBufferSize 16MiB`, and MTU-capped
+`MaxMessageSize` — adopted after tcpdump showed it eliminates IP
+fragmentation of camera datagrams entirely). On the sender host, raise
+`net.core.wmem_max`/`rmem_max` (16 MiB is enough) the same `/etc/sysctl.d/`
+way, and keep the Jetson in performance mode (`jetson_clocks` — a systemd
+oneshot service survives reboots; clock state directly shows up as
+encoder-skip losses).
 
-Loss ledger from the robot-LAN measurements (2026-07-31): receiver rcvbuf
-overflow was the dominant loss (~0.9% of depth) until the sysctl; sender
-sndbuf the next (~0.4%) until the tuning above; what remains is ~0.1%,
-bursty 1-4 frame transit losses. Publish-vs-receive accounting showed the
-x264 encoder skips almost nothing (color/depth publish counts match within
-0-2 per 2 min), and the recorder side stayed lossless throughout every run
-(dropped / write_errors 0; lowstate 96,975/96,975 @ ~1 kHz). The residual
-is best handled at dataset-build time: gate episodes on their per-stream
-wire_gap counters (meta.yaml) rather than chasing zero on a best-effort
-transport.
+Loss ledger from the robot-LAN measurements (2026-07/08), in the order the
+causes were found and fixed:
+
+| loss channel | scale | fix |
+|---|---|---|
+| receiver UDP rcvbuf overflow | ~0.9% of depth | host `rmem_max` + 16 MiB request |
+| sender sndbuf / Jetson clocks | ~0.4% | `wmem_max` + 16 MiB + `jetson_clocks` |
+| kernel IP reassembly (14 KB datagrams) | part of residual | `MaxMessageSize` MTU cap (sender) |
+| residual transit losses | ~0.1%, isolated 1-4 frames | **RELIABLE readers** — retransmission recovers them |
+| transmitter-side skips (head camera under load) | ~0.02%, the current floor | Jetson performance mode; inherent to the Tx latest-wins pipeline |
+
+End state (10-min run, 2 cameras + lowstate + hands): ~0.02% camera frames
+missing (all seq-recorded), every other stream zero, recorder side lossless
+in every run ever measured (`dropped`/`write_errors` 0). The residual is
+best handled at dataset-build time: gate episodes on their per-stream
+wire_gap counters (meta.yaml).
 
 ## Verifying a session
 

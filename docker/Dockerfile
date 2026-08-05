@@ -70,8 +70,8 @@ WORKDIR /workspace/kist-data-collector
 # Placed before COPY so source edits don't re-clone; .dockerignore keeps any
 # local working copy out of the build context so this pinned clone wins.
 ARG EXT_SENSOR_IO_REPO=https://github.com/Safety-Node/kist-ext-sensor-io.git
-# d97b554: DDS config routed by runners (SDK env-override fix) + reader queue 30
-ARG EXT_SENSOR_IO_COMMIT=d97b554b6ac898e1cea5e478a467bf3e8357766c
+# a8de3ae: runner DDS routing + reader queue 30 + MTU-capped datagrams
+ARG EXT_SENSOR_IO_COMMIT=a8de3ae293ab55354fc28b054146f0d040ca7e55
 RUN git clone "${EXT_SENSOR_IO_REPO}" thirdparty/kist-ext-sensor-io && \
     git -C thirdparty/kist-ext-sensor-io checkout "${EXT_SENSOR_IO_COMMIT}"
 
