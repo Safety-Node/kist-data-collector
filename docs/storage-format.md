@@ -18,7 +18,7 @@ sessions/<YYYYMMDD_HHMMSS>/
     depth.idx.csv         # seq,stamp_ns,recv_ns,width,height,depth_scale,offset,size
 ```
 
-Row-shaped streams (robot state now, UWB later) go straight to CSV — small
+Row-shaped streams (robot state, hands, UWB) go straight to CSV — small
 fixed-schema records don't need the blob+index form; both writer shapes
 share the same bounded-queue hand-off (`common/record_queue.hpp`), so the
 loss accounting below applies uniformly.
