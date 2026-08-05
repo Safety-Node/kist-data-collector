@@ -56,12 +56,18 @@ add_library(uwb_recorder STATIC src/uwb_recorder/uwb_recorder.cpp)
 target_include_directories(uwb_recorder PUBLIC include)
 target_link_libraries(uwb_recorder PUBLIC uwb_io)
 
+# ─── whole-app assembly ───────────────────────────────────────────────────────
+# DataCollector — every enabled recorder behind one start/stop, into one
+# session dir (settings from yaml, 1 Hz report, drain + meta summary on stop).
+add_library(data_collector STATIC src/system/data_collector.cpp)
+target_include_directories(data_collector PUBLIC include)
+target_link_libraries(data_collector
+    PUBLIC realsense_recorder unitree_recorder uwb_recorder yaml-cpp)
+
 # ─── runners ──────────────────────────────────────────────────────────────────
-# Main collector: one RealsenseRecorder per configured camera + optional
-# LowstateRecorder / Dex3Recorders, all into one session dir.
+# Main collector: config -> DataCollector, report loop, stop on signal.
 add_executable(kist_data_collector src/main.cpp)
-target_link_libraries(kist_data_collector
-    PRIVATE realsense_recorder unitree_recorder uwb_recorder yaml-cpp)
+target_link_libraries(kist_data_collector PRIVATE data_collector)
 
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —
