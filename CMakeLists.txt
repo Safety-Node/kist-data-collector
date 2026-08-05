@@ -69,6 +69,15 @@ target_link_libraries(data_collector
 add_executable(kist_data_collector src/main.cpp)
 target_link_libraries(kist_data_collector PRIVATE data_collector)
 
+# ─── tests ────────────────────────────────────────────────────────────────────
+# One-stream isolation runners — same DataCollector with only that stream
+# enabled (its own session dir, report, drain). For checking one sensor's
+# pipeline without the others' load.
+foreach(stream realsense lowstate dex3 uwb)
+    add_executable(test_${stream}_recorder test/test_${stream}_recorder.cpp)
+    target_link_libraries(test_${stream}_recorder PRIVATE data_collector)
+endforeach()
+
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —
 #   ExportColorToMp4    color.h264 -> color.mp4 (libavformat remux, VFR)
