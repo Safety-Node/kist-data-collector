@@ -26,37 +26,40 @@ if(NOT TARGET realsense_rx)
         "install the CycloneDDS 0.10.2 idlc toolchain (see thirdparty snapshot README).")
 endif()
 
-# ─── recorder library ─────────────────────────────────────────────────────────
-# common/: stream-agnostic pieces (RecordQueue hand-off, blob/row writers,
-# session dir + meta) that every domain recorder builds on.
-# realsense_recorder/: the RealSense assembly — subscriber on_frame hooks ->
-# bounded queues -> writer threads appending the compressed payloads + CSV
-# indices (see include/common/record_queue.hpp for the losslessness contract).
-add_library(realsense_recorder STATIC
-    src/realsense_recorder/realsense_recorder.cpp
-    src/common/session.cpp
-)
-target_include_directories(realsense_recorder PUBLIC include)
-target_link_libraries(realsense_recorder PUBLIC realsense_rx)
+# ─── common ───────────────────────────────────────────────────────────────────
+# Stream-agnostic pieces every recorder builds on: RecordQueue hand-off and
+# the blob/row writers are header-only; session dir + meta.yaml compile here.
+add_library(recorder_common STATIC src/common/session.cpp)
+target_include_directories(recorder_common PUBLIC include)
 
-# Robot-state recorders: rt/lowstate (unitree_hg LowState_, ~1 kHz) and the
-# Dex3 hands (rt/dex3/<side>/state — fingers are NOT in lowstate) -> one CSV
-# row per message via the row writer. Each recorder instance owns its queue
-# + writer thread, so hands and lowstate never share a storage path. Needs
-# only the SDK (typed subscribers + the bundled hg IDL types) — no camera deps.
+# ─── per-stream recorder assemblies (system/, embeddable libraries) ───────────
+# One assembly per stream behind start/stop — subscriber on_frame/on_msg
+# hooks -> bounded queue(s) -> writer thread(s) (see
+# include/common/record_queue.hpp for the losslessness contract). The test_*
+# runners drive one each; DataCollector below composes them.
+
+# RealsenseRecorder: compressed color/depth payloads verbatim + CSV indices.
+add_library(realsense_recorder STATIC src/system/realsense_recorder.cpp)
+target_include_directories(realsense_recorder PUBLIC include)
+target_link_libraries(realsense_recorder PUBLIC realsense_rx recorder_common)
+
+# LowstateRecorder (rt/lowstate, ~1 kHz) + Dex3Recorder (rt/dex3/<side>/state
+# — fingers are NOT in lowstate) -> one CSV row per message. Each instance
+# owns its queue + writer thread, so hands and lowstate never share a
+# storage path. Needs only the SDK — no camera deps.
 add_library(unitree_recorder STATIC
-    src/unitree_recorder/lowstate_recorder.cpp
-    src/unitree_recorder/dex3_recorder.cpp
+    src/system/lowstate_recorder.cpp
+    src/system/dex3_recorder.cpp
 )
 target_include_directories(unitree_recorder PUBLIC include)
-target_link_libraries(unitree_recorder PUBLIC unitree_sdk2)
+target_link_libraries(unitree_recorder PUBLIC unitree_sdk2 recorder_common)
 
-# UWB recorder: ext's UwbSubscriber (SDK path) -> one CSV row per fix.
-add_library(uwb_recorder STATIC src/uwb_recorder/uwb_recorder.cpp)
+# UwbRecorder: ext's UwbSubscriber (SDK path) -> one CSV row per fix.
+add_library(uwb_recorder STATIC src/system/uwb_recorder.cpp)
 target_include_directories(uwb_recorder PUBLIC include)
-target_link_libraries(uwb_recorder PUBLIC uwb_io)
+target_link_libraries(uwb_recorder PUBLIC uwb_io recorder_common)
 
-# ─── whole-app assembly ───────────────────────────────────────────────────────
+# ─── whole-app assembly (system/) ─────────────────────────────────────────────
 # DataCollector — every enabled recorder behind one start/stop, into one
 # session dir (settings from yaml, 1 Hz report, drain + meta summary on stop).
 add_library(data_collector STATIC src/system/data_collector.cpp)
@@ -70,13 +73,21 @@ add_executable(kist_data_collector src/main.cpp)
 target_link_libraries(kist_data_collector PRIVATE data_collector)
 
 # ─── tests ────────────────────────────────────────────────────────────────────
-# One-stream isolation runners — same DataCollector with only that stream
-# enabled (its own session dir, report, drain). For checking one sensor's
-# pipeline without the others' load.
-foreach(stream realsense lowstate dex3 uwb)
-    add_executable(test_${stream}_recorder test/test_${stream}_recorder.cpp)
-    target_link_libraries(test_${stream}_recorder PRIVATE data_collector)
-endforeach()
+# One-stream isolation runners — each drives its recorder assembly directly
+# (own session dir, report, drain). Also the embedding reference per stream.
+# realsense_config (ext) carries yaml-cpp + ext's include dir — the tests
+# read config.yaml via ext's common/config.hpp, same as ext's own runners.
+add_executable(test_realsense_recorder test/test_realsense_recorder.cpp)
+target_link_libraries(test_realsense_recorder PRIVATE realsense_recorder realsense_config)
+
+add_executable(test_lowstate_recorder test/test_lowstate_recorder.cpp)
+target_link_libraries(test_lowstate_recorder PRIVATE unitree_recorder realsense_config)
+
+add_executable(test_dex3_recorder test/test_dex3_recorder.cpp)
+target_link_libraries(test_dex3_recorder PRIVATE unitree_recorder realsense_config)
+
+add_executable(test_uwb_recorder test/test_uwb_recorder.cpp)
+target_link_libraries(test_uwb_recorder PRIVATE uwb_recorder realsense_config)
 
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —

@@ -109,7 +109,8 @@ Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
 status once a second; the final counters land in `meta.yaml`.
 
 To record a single stream in isolation (same session layout, that stream
-only — its `enabled` flag in the config is overridden to on):
+only — regardless of its `enabled` flag in the config; cameras still follow
+the `realsense_cameras` list):
 
 ```bash
 ./build/test_realsense_recorder   # cameras only

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "common/session.hpp"
-#include "realsense_recorder/realsense_recorder.hpp"
-#include "unitree_recorder/dex3_recorder.hpp"
-#include "unitree_recorder/lowstate_recorder.hpp"
-#include "uwb_recorder/uwb_recorder.hpp"
+#include "system/realsense_recorder.hpp"
+#include "system/dex3_recorder.hpp"
+#include "system/lowstate_recorder.hpp"
+#include "system/uwb_recorder.hpp"
 
 #include <yaml-cpp/yaml.h>
 

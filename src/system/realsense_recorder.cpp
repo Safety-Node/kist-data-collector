@@ -1,4 +1,4 @@
-#include "realsense_recorder/realsense_recorder.hpp"
+#include "system/realsense_recorder.hpp"
 
 #include <cinttypes>
 #include <cstdio>

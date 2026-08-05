@@ -1,4 +1,4 @@
-#include "unitree_recorder/lowstate_recorder.hpp"
+#include "system/lowstate_recorder.hpp"
 
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>

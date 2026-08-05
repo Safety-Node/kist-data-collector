@@ -1,12 +1,14 @@
-// Records ONLY rt/lowstate (~1 kHz) — one-stream isolation runner (the
-// kist_data_collector runner records everything enabled). Runs it even when
-// `lowstate.enabled` is false in the config; everything else stays off.
+// Records ONLY rt/lowstate (~1 kHz) — drives the system/LowstateRecorder
+// assembly by itself (the kist_data_collector runner records everything
+// enabled). Also the reference for embedding it.
 //
 //   ./test_lowstate_recorder [config_path]      (default config/config.yaml)
 
 #include "common/config.hpp"
 #include "common/dds_config.hpp"
-#include "system/data_collector.hpp"
+#include "common/human_size.hpp"
+#include "common/session.hpp"
+#include "system/lowstate_recorder.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -23,28 +25,48 @@ int main(int argc, char** argv) {
 
     kist::Config::instance().load(config_path);
     const auto& root = kist::Config::instance().root();
+    const auto unitree  = root["unitree"];
+    const int domain_id = unitree ? unitree["domain_id"].as<int>(0) : 0;
+    const auto storage  = root["storage"];
+    const std::string output_dir =
+        storage ? storage["output_dir"].as<std::string>("sessions") : "sessions";
+    const auto ls = root["lowstate"];
+    const size_t capacity = ls ? ls["queue_capacity"].as<size_t>(8192) : 8192;
 
-    auto settings = kist::DataCollector::Settings::from_yaml(root);
-    settings.cameras.clear();
-    settings.lowstate_enabled = true;
-    settings.dex3_enabled     = false;
-    settings.uwb_enabled      = false;
-    if (!kist::apply_dds_config(root, &settings.dds_uri)) return 1;
+    std::string dds_uri;
+    if (!kist::apply_dds_config(root, &dds_uri)) return 1;
 
-    kist::DataCollector collector;
-    if (!collector.start(settings)) return 1;
+    const auto session = kist::session_create(output_dir);
+    if (session.dir.empty()) return 1;
+
+    kist::LowstateRecorder rec;
+    if (!rec.start(domain_id, "", session.dir, capacity)) return 1;
+    kist::session_write_meta(session, domain_id, dds_uri, {});
+    std::printf("[test_lowstate_recorder] recording -> %s (domain=%d)\n",
+                session.dir.c_str(), domain_id);
 
     std::signal(SIGINT,  [](int) { g_stop = true; });
     std::signal(SIGTERM, [](int) { g_stop = true; });
 
+    uint64_t last_rx = 0, last_wr = 0;
     auto window = std::chrono::steady_clock::now();
     while (!g_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         const auto now = std::chrono::steady_clock::now();
         if (now - window < std::chrono::seconds(1)) continue;
         window = now;
-        collector.print_report();
+        const auto s = rec.stats();
+        std::printf("  lowstate     rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
+                    (unsigned long long)(s.received - last_rx),
+                    (unsigned long long)(s.written  - last_wr),
+                    (unsigned long long)s.dropped, (unsigned long long)s.write_errors,
+                    kist::human_size(s.bytes).c_str());
+        last_rx = s.received;
+        last_wr = s.written;
     }
-    collector.stop();
+
+    rec.stop();
+    kist::session_finalize_meta(session, {{"unitree", "lowstate", rec.stats()}});
+    std::printf("[test_lowstate_recorder] session %s closed\n", session.dir.c_str());
     return 0;
 }
