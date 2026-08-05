@@ -27,6 +27,16 @@
 
 static std::atomic<bool> g_stop{false};
 
+// Human-readable size for the 1 Hz report: B / KB / MB. Thin streams (UWB,
+// ~650 B/s) would otherwise sit at "0.0 MB" for minutes.
+static std::string human_size(uint64_t bytes) {
+    char b[32];
+    if (bytes >= 1000000)   std::snprintf(b, sizeof(b), "%6.1f MB", double(bytes) / 1e6);
+    else if (bytes >= 1000) std::snprintf(b, sizeof(b), "%6.1f KB", double(bytes) / 1e3);
+    else                    std::snprintf(b, sizeof(b), "%4llu B ", (unsigned long long)bytes);
+    return b;
+}
+
 int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     const std::string config_path = (argc >= 2) ? argv[1] : "config/config.yaml";
@@ -178,49 +188,49 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < recorders.size(); ++i) {
             const auto c = recorders[i]->color_stats();
             const auto d = recorders[i]->depth_stats();
-            std::printf("  %-12s color rx %2llu wr %2llu fps drop %llu gap %llu %6.1f MB | "
-                        "depth rx %2llu wr %2llu fps drop %llu gap %llu %6.1f MB\n",
+            std::printf("  %-12s color rx %2llu wr %2llu fps drop %llu gap %llu %s | "
+                        "depth rx %2llu wr %2llu fps drop %llu gap %llu %s\n",
                         recorders[i]->name().c_str(),
                         (unsigned long long)(c.received - last[i].c_rx),
                         (unsigned long long)(c.written  - last[i].c_wr),
                         (unsigned long long)c.dropped, (unsigned long long)c.wire_gaps,
-                        double(c.bytes) / 1e6,
+                        human_size(c.bytes).c_str(),
                         (unsigned long long)(d.received - last[i].d_rx),
                         (unsigned long long)(d.written  - last[i].d_wr),
                         (unsigned long long)d.dropped, (unsigned long long)d.wire_gaps,
-                        double(d.bytes) / 1e6);
+                        human_size(d.bytes).c_str());
             last[i] = {c.received, c.written, d.received, d.written};
         }
         if (lowstate) {
             const auto l = lowstate->stats();
-            std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %6.1f MB\n",
+            std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
                         "lowstate",
                         (unsigned long long)(l.received - last_ls_rx),
                         (unsigned long long)(l.written  - last_ls_wr),
                         (unsigned long long)l.dropped, (unsigned long long)l.write_errors,
-                        double(l.bytes) / 1e6);
+                        human_size(l.bytes).c_str());
             last_ls_rx = l.received;
             last_ls_wr = l.written;
         }
         if (uwb) {
             const auto u = uwb->stats();
-            std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %6.1f MB\n",
+            std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
                         "uwb",
                         (unsigned long long)(u.received - last_uw_rx),
                         (unsigned long long)(u.written  - last_uw_wr),
                         (unsigned long long)u.dropped, (unsigned long long)u.write_errors,
-                        double(u.bytes) / 1e6);
+                        human_size(u.bytes).c_str());
             last_uw_rx = u.received;
             last_uw_wr = u.written;
         }
         for (size_t i = 0; i < hands.size(); ++i) {
             const auto h = hands[i]->stats();
-            std::printf("  hand_%-7s rx %4llu wr %4llu hz drop %llu werr %llu %6.1f MB\n",
+            std::printf("  hand_%-7s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
                         hands[i]->side().c_str(),
                         (unsigned long long)(h.received - last_hand[i].first),
                         (unsigned long long)(h.written  - last_hand[i].second),
                         (unsigned long long)h.dropped, (unsigned long long)h.write_errors,
-                        double(h.bytes) / 1e6);
+                        human_size(h.bytes).c_str());
             last_hand[i] = {h.received, h.written};
         }
     }
