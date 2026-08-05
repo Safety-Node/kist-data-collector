@@ -54,7 +54,7 @@ carries the same description next to the data.
 | `imu_temp` | 1 | IMU temperature (°C) |
 | `m00_q` .. `m34_tau` | 140 | body motors 0-34 × (`q` rad, `dq` rad/s, `ddq`, `tau_est` Nm); unused slots read 0 |
 
-### `hand_left.csv` / `hand_right.csv` — 65 columns, ~830 Hz
+### `hand_left.csv` / `hand_right.csv` — 137 columns, ~830 Hz
 
 | columns | n | meaning |
 |---|---|---|
