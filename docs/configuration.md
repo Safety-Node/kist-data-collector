@@ -26,7 +26,7 @@ inside the container (`nano` is installed) for a one-off.
 |---|---|---|
 | `enabled` | `true` | the whole camera path on/off |
 | `queue_capacity` | `1024` | in-flight frame bound per stream (30 fps → capacity/30 s of disk-stall headroom; memory ≈ capacity × compressed frame size) |
-| `reliable` | `true` | camera readers request RELIABLE QoS — isolated wire losses are recovered by retransmission. `false` = plain best-effort, the safety valve if a transmitter ever stops offering RELIABLE |
+| `reliable` | `true` | RELIABLE reader QoS — lost frames are recovered by retransmission; `false` = plain best-effort |
 | `cameras[].name` | — | selects the `rt/kist/camera/<name>/...` topics; must match the transmitter's camera names |
 | `cameras[].enabled` | `true` | per-camera switch |
 
@@ -46,15 +46,12 @@ inside the container (`nano` is installed) for a one-off.
 
 ## `cyclonedds.xml`
 
-The network interface and every transport knob live **here, not in
-config.yaml**: the unitree SDK builds its own DDS config whenever it is
-handed a non-empty interface and then silently ignores `CYCLONEDDS_URI` —
-so the collector always passes the SDK an empty interface and routes this
-file instead.
+The network interface and the DDS transport tuning live here — **not in
+config.yaml**.
 
 | Element | Value | Meaning |
 |---|---|---|
-| `General/Interfaces/NetworkInterface name` | `eno2` | the NIC toward the robot LAN on this machine (`lo` for same-machine testing) — **the** place to change the NIC |
-| `Internal/SocketReceiveBufferSize min` | `16MB` | kernel UDP receive buffer request. The host must allow it: `net.core.rmem_max` (see the README's Deployment tuning) — otherwise the request is silently clamped |
-| `Internal/DefragUnreliableMaxSamples` | `64` | concurrent best-effort defrag slots (Cyclone default 4) — a ~190 KB depth frame is ~130 fragments and camera bursts overlap |
-| `Internal/DeliveryQueueMaxSamples` | `1024` | the delivery queue all readers share (Cyclone default 256) — high-rate row streams + camera bursts overflow it otherwise |
+| `General/Interfaces/NetworkInterface name` | `eno2` | the NIC toward the robot LAN on this machine (`lo` for same-machine testing) — change the NIC here |
+| `Internal/SocketReceiveBufferSize min` | `16MB` | UDP receive buffer request — requires `net.core.rmem_max` raised on the host (README's Deployment tuning) |
+| `Internal/DefragUnreliableMaxSamples` | `64` | sized for the camera streams — keep as is |
+| `Internal/DeliveryQueueMaxSamples` | `1024` | sized for all streams together — keep as is |
