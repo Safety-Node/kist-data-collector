@@ -91,24 +91,6 @@ With Docker, the image is already built — this is the manual path:
 cmake -B build && cmake --build build
 ```
 
-## Storage format
-
-One directory per recording session:
-
-```
-sessions/<YYYYMMDD_HHMMSS>/
-  meta.yaml                  # session times + per-stream counters
-  lowstate.csv               # robot state, one row per message
-  hand_left.csv hand_right.csv
-  <camera>/
-    color.h264  color.idx.csv    # compressed payloads verbatim,
-    depth.rvl   depth.idx.csv    #   one CSV index per stream
-```
-
-Every file shares the `recv_ns` column (arrival clock, epoch ns) for
-cross-stream alignment. Field-level schemas, format rationale and the
-alternatives considered: [docs/storage-format.md](docs/storage-format.md).
-
 ## Usage
 
 Set up the config once before recording:
@@ -137,6 +119,24 @@ net.core.rmem_max = 134217728
 EOF
 sudo sysctl --system
 ```
+
+## Storage format
+
+One directory per recording session:
+
+```
+sessions/<YYYYMMDD_HHMMSS>/
+  meta.yaml                  # session times + per-stream counters
+  lowstate.csv               # robot state, one row per message
+  hand_left.csv hand_right.csv
+  <camera>/
+    color.h264  color.idx.csv    # compressed payloads verbatim,
+    depth.rvl   depth.idx.csv    #   one CSV index per stream
+```
+
+Every file shares the `recv_ns` column (arrival clock, epoch ns) for
+cross-stream alignment. Field-level schemas, format rationale and the
+alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 
 ## Live record & playback walkthrough (same-machine, one camera)
 
