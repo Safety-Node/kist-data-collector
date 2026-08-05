@@ -53,5 +53,5 @@ config.yaml**.
 |---|---|---|
 | `General/Interfaces/NetworkInterface name` | `lo` | default is same-machine testing; for deployment set the robot-LAN NIC (e.g. `eno2`, `eth0`) here |
 | `Internal/SocketReceiveBufferSize min` | `16MB` | UDP receive buffer request — requires `net.core.rmem_max` raised on the host (README's Deployment tuning) |
-| `Internal/DefragUnreliableMaxSamples` | `64` | sized for the camera streams — keep as is |
-| `Internal/DeliveryQueueMaxSamples` | `1024` | sized for all streams together — keep as is |
+| `Internal/DefragUnreliableMaxSamples` | `64` | concurrent defragmentation slots |
+| `Internal/DeliveryQueueMaxSamples` | `1024` | reader delivery queue depth |
