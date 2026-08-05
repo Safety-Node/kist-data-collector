@@ -75,19 +75,17 @@ target_link_libraries(kist_data_collector PRIVATE data_collector)
 # ─── tests ────────────────────────────────────────────────────────────────────
 # One-stream isolation runners — each drives its recorder assembly directly
 # (own session dir, report, drain). Also the embedding reference per stream.
-# realsense_config (ext) carries yaml-cpp + ext's include dir — the tests
-# read config.yaml via ext's common/config.hpp, same as ext's own runners.
 add_executable(test_realsense_recorder test/test_realsense_recorder.cpp)
-target_link_libraries(test_realsense_recorder PRIVATE realsense_recorder realsense_config)
+target_link_libraries(test_realsense_recorder PRIVATE realsense_recorder yaml-cpp)
 
 add_executable(test_lowstate_recorder test/test_lowstate_recorder.cpp)
-target_link_libraries(test_lowstate_recorder PRIVATE unitree_recorder realsense_config)
+target_link_libraries(test_lowstate_recorder PRIVATE unitree_recorder yaml-cpp)
 
 add_executable(test_dex3_recorder test/test_dex3_recorder.cpp)
-target_link_libraries(test_dex3_recorder PRIVATE unitree_recorder realsense_config)
+target_link_libraries(test_dex3_recorder PRIVATE unitree_recorder yaml-cpp)
 
 add_executable(test_uwb_recorder test/test_uwb_recorder.cpp)
-target_link_libraries(test_uwb_recorder PRIVATE uwb_recorder realsense_config)
+target_link_libraries(test_uwb_recorder PRIVATE uwb_recorder yaml-cpp)
 
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —
