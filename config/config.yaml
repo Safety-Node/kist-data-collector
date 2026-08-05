@@ -49,3 +49,9 @@ lowstate:
 dex3:
   enabled: true
   queue_capacity: 4096
+
+# UWB position fixes: rt/kist/uwb/pose -> <session>/uwb.csv
+# (recv_ns, stamp_ns, x, y, z — UWB local frame, meters)
+uwb:
+  enabled: true
+  queue_capacity: 256

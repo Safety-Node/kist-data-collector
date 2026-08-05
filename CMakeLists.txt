@@ -51,12 +51,17 @@ add_library(unitree_recorder STATIC
 target_include_directories(unitree_recorder PUBLIC include)
 target_link_libraries(unitree_recorder PUBLIC unitree_sdk2)
 
+# UWB recorder: ext's UwbSubscriber (SDK path) -> one CSV row per fix.
+add_library(uwb_recorder STATIC src/uwb_recorder/uwb_recorder.cpp)
+target_include_directories(uwb_recorder PUBLIC include)
+target_link_libraries(uwb_recorder PUBLIC uwb_io)
+
 # ─── runners ──────────────────────────────────────────────────────────────────
 # Main collector: one RealsenseRecorder per configured camera + optional
 # LowstateRecorder / Dex3Recorders, all into one session dir.
 add_executable(kist_data_collector src/main.cpp)
 target_link_libraries(kist_data_collector
-    PRIVATE realsense_recorder unitree_recorder yaml-cpp)
+    PRIVATE realsense_recorder unitree_recorder uwb_recorder yaml-cpp)
 
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —

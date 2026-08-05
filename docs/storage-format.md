@@ -10,6 +10,7 @@ sessions/<YYYYMMDD_HHMMSS>/
                           #   recv_ns,tick,modes,IMU,per-motor q/dq/ddq/tau_est
   hand_left.csv           # Dex3 rt/dex3/<side>/state, one row per message (if enabled):
   hand_right.csv          #   recv_ns, 7 finger motors x q/dq/ddq/tau, pressure pads
+  uwb.csv                 # UWB fixes, one row per rt/kist/uwb/pose (if enabled)
   <camera>/               # one dir per camera name (head, left_wrist, ...)
     color.h264            # Annex-B H.264 NAL units, appended frame by frame
     color.idx.csv         # seq,stamp_ns,recv_ns,width,height,is_keyframe,offset,size
@@ -60,6 +61,17 @@ carries the same description next to the data.
 | `recv_ns` | 1 | arrival time on this host (epoch ns) — the only timestamp (the hand message carries none) |
 | `f0_q` .. `f6_tau` | 28 | finger motors 0-6 × (`q`, `dq`, `ddq`, `tau_est`); `f0` = thumb rotation (opposition), `f1`-`f2` thumb bend, `f3`-`f4` index, `f5`-`f6` middle |
 | `press0_0` .. `press2_11` | 36 | fingertip press pads 0-2 × 12 pressure channels |
+
+### `uwb.csv` — 5 columns, per received fix
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) |
+| `stamp_ns` | 1 | publish time, transmitter clock (epoch ns) |
+| `x`, `y`, `z` | 3 | position in the UWB local frame (m) |
+
+The transmitter publishes valid fixes only and goes silent otherwise — a
+time gap between rows means "no fix", not loss.
 
 ## Cross-stream sync
 

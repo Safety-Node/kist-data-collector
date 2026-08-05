@@ -44,6 +44,13 @@ inside the container (`nano` is installed) for a one-off.
 | `enabled` | `false` | record both Dex3 hands (`rt/dex3/{left,right}/state`) into `hand_{left,right}.csv` |
 | `queue_capacity` | `4096` | each hand runs at ~830 Hz — one recorder (own queue + writer thread) per hand |
 
+### `uwb`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | record UWB fixes (`rt/kist/uwb/pose`) into `uwb.csv` |
+| `queue_capacity` | `256` | fixes arrive at ~10 Hz |
+
 ## `cyclonedds.xml`
 
 The network interface and the DDS transport tuning live here — **not in

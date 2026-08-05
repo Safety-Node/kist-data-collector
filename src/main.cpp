@@ -9,6 +9,7 @@
 #include "realsense_recorder/realsense_recorder.hpp"
 #include "unitree_recorder/lowstate_recorder.hpp"
 #include "unitree_recorder/dex3_recorder.hpp"
+#include "uwb_recorder/uwb_recorder.hpp"
 #include "common/session.hpp"
 #include "common/config.hpp"
 
@@ -69,8 +70,10 @@ int main(int argc, char** argv) {
     // Absent-section guards: chaining [] on a missing yaml node throws.
     const auto ls_node = root["lowstate"];
     const auto dx_node = root["dex3"];
+    const auto uw_node = root["uwb"];
     const bool lowstate_enabled = ls_node && ls_node["enabled"].as<bool>(false);
     const bool dex3_enabled     = dx_node && dx_node["enabled"].as<bool>(false);
+    const bool uwb_enabled      = uw_node && uw_node["enabled"].as<bool>(false);
 
     // realsense_cameras: section-level enabled/queue_capacity, then the
     // camera list — each entry may carry its own enabled (default true).
@@ -91,7 +94,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (names.empty() && !lowstate_enabled && !dex3_enabled) {
+    if (names.empty() && !lowstate_enabled && !dex3_enabled && !uwb_enabled) {
         std::cerr << "[kist_data_collector] nothing to record in " << config_path << "\n";
         return 1;
     }
@@ -136,7 +139,17 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (recorders.empty() && !lowstate && hands.empty()) {
+    std::unique_ptr<kist::UwbRecorder> uwb;
+    if (uwb_enabled) {
+        const size_t uwb_capacity = uw_node["queue_capacity"].as<size_t>(256);
+        uwb = std::make_unique<kist::UwbRecorder>();
+        if (!uwb->start(domain_id, sdk_iface, session.dir, uwb_capacity)) {
+            std::cerr << "[kist_data_collector] uwb failed — skipped\n";
+            uwb.reset();
+        }
+    }
+
+    if (recorders.empty() && !lowstate && hands.empty() && !uwb) {
         std::cerr << "[kist_data_collector] no streams started\n";
         return 1;
     }
@@ -154,6 +167,7 @@ int main(int argc, char** argv) {
     struct Last { uint64_t c_rx = 0, c_wr = 0, d_rx = 0, d_wr = 0; };
     std::vector<Last> last(recorders.size());
     uint64_t last_ls_rx = 0, last_ls_wr = 0;
+    uint64_t last_uw_rx = 0, last_uw_wr = 0;
     std::vector<std::pair<uint64_t, uint64_t>> last_hand(hands.size(), {0, 0});
     auto window = std::chrono::steady_clock::now();
     while (!g_stop) {
@@ -188,6 +202,17 @@ int main(int argc, char** argv) {
             last_ls_rx = l.received;
             last_ls_wr = l.written;
         }
+        if (uwb) {
+            const auto u = uwb->stats();
+            std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %6.1f MB\n",
+                        "uwb",
+                        (unsigned long long)(u.received - last_uw_rx),
+                        (unsigned long long)(u.written  - last_uw_wr),
+                        (unsigned long long)u.dropped, (unsigned long long)u.write_errors,
+                        double(u.bytes) / 1e6);
+            last_uw_rx = u.received;
+            last_uw_wr = u.written;
+        }
         for (size_t i = 0; i < hands.size(); ++i) {
             const auto h = hands[i]->stats();
             std::printf("  hand_%-7s rx %4llu wr %4llu hz drop %llu werr %llu %6.1f MB\n",
@@ -214,6 +239,10 @@ int main(int argc, char** argv) {
     for (auto& hand : hands) {
         hand->stop();
         summary.push_back({"dex3", "hand_" + hand->side(), hand->stats()});
+    }
+    if (uwb) {
+        uwb->stop();
+        summary.push_back({"uwb", "position", uwb->stats()});
     }
     kist::session_finalize_meta(session, summary);
 
