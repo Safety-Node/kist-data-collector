@@ -60,7 +60,7 @@ carries the same description next to the data.
 |---|---|---|
 | `recv_ns` | 1 | arrival time on this host (epoch ns) — the only timestamp (the hand message carries none) |
 | `f0_q` .. `f6_tau` | 28 | finger motors 0-6 × (`q`, `dq`, `ddq`, `tau_est`); `f0` = thumb rotation (opposition), `f1`-`f2` thumb bend, `f3`-`f4` index, `f5`-`f6` middle |
-| `press0_0` .. `press2_11` | 36 | fingertip press pads 0-2 × 12 pressure channels |
+| `press0_0` .. `press8_11` | 108 | fingertip press pads 0-8 × 12 pressure channels |
 
 ### `uwb.csv` — 5 columns, per received fix
 

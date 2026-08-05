@@ -65,7 +65,7 @@ void session_write_meta(const SessionInfo& session, int domain_id,
       << "         gyro, accel, rpy, temp), body motors m00..m34 x q/dq/ddq/tau_est.\n"
       << "  hand_{left,right}.csv: one row per rt/dex3/<side>/state msg — recv_ns,\n"
       << "         finger motors f0..f6 x q/dq/ddq/tau_est (f0 = thumb rotation),\n"
-      << "         press pads press0..2 x 12 pressure channels.\n"
+      << "         press pads press0..8 x 12 pressure channels.\n"
       << "  uwb.csv: one row per rt/kist/uwb/pose fix — recv_ns, stamp_ns, x, y, z\n"
       << "         (UWB local frame, m); time gaps = no fix, not loss.\n"
       << "  clocks: stamp_ns = transmitter capture clock (epoch ns);\n"

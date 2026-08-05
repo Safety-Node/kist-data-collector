@@ -16,7 +16,7 @@
 namespace kist {
 
 constexpr int kDex3Motors       = 7;
-constexpr int kDex3PressPads    = 3;
+constexpr int kDex3PressPads    = 9;   // Dex3-1 reports 9 pads in the field
 constexpr int kDex3PressChannel = 12;
 
 inline std::string dex3_header() {
