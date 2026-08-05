@@ -9,6 +9,21 @@ cameras (H.264 color + RVL depth), `rt/lowstate` and the Dex3 hands into one
 
 [![Architecture](docs/kist-data-collector.svg)](docs/kist-data-collector.svg)
 
+## Dependencies
+
+| Component | Version | Role |
+|---|---|---|
+| `kist-ext-sensor-io` | `a8de3ae` | camera wire contract (`kist_msgs` IDL, frame structs, topic names) + RVL depth decoder |
+| `unitree_sdk2` | `21d0a3b` | DDS client (lowstate / Dex3 subscribers), `hg` IDL types, bundled ddsc/ddscxx runtime |
+| CycloneDDS + CycloneDDS-CXX | 0.10.2 | `idlc`/`idlcxx` codegen for the camera DDS types |
+| `yaml-cpp` | distro | config parsing |
+| FFmpeg / libav | distro | mp4 remux + H.264 decode (exporters), `ffplay` playback |
+| OpenCV | distro | depth colorize/encode, jpg/png writing (exporters) |
+| Python 3 | distro | `scripts/verify_session.py` |
+
+All of it is baked into the Docker image — the pinned repos are cloned at
+image build (see Build).
+
 ## Storage format
 
 **Recommendation: persist the compressed wire payloads verbatim, one blob
@@ -79,26 +94,51 @@ Alternatives considered:
   low-rate streams join and per-stream files get unwieldy; the blob+index
   layout converts to MCAP losslessly at any time.
 
-## Build
+## Installation
 
-Docker (recommended — bakes idlc toolchain + unitree_sdk2 + build):
+#### 1. Clone Repository
 
 ```bash
-./docker/build.sh      # builds the kist-data-collector image
-./docker/run.sh        # shell in the container; binaries under build/
+git clone https://github.com/Safety-Node/kist-data-collector.git
+cd kist-data-collector
+```
+
+All following steps run from the repository root.
+
+#### Quick Start with Docker
+
+The image bakes in everything below (pinned thirdparty clones, toolchain,
+export deps, and the build):
+
+```bash
+./docker/build.sh      # builds the image (docker build -t kist-data-collector)
+./docker/run.sh        # shell in the container; prebuilt binaries under build/
                        # recordings land in $SESSIONS_DIR (default ~/kist-data-collector-sessions)
 ```
 
-The image clones `kist-ext-sensor-io` (and `unitree_sdk2` inside it) at
-build time, pinned to validated commits — bump the `EXT_SENSOR_IO_COMMIT`
-build-arg to move to a newer upstream. The upstream is used unmodified (the
-recorder only links its public libraries); if patching it ever becomes
-necessary, switch back to committing a vendored snapshot instead of
-patching the clone, so image builds stay reproducible.
+`run.sh` wires `--network host` (DDS), the X11 socket (`ffplay` playback),
+and the `sessions/` mount. The numbered steps below are the manual
+(non-Docker) alternative.
 
-Manual (non-Docker) build: install the CycloneDDS 0.10.2 idlc toolchain +
-yaml-cpp (kist-ext-sensor-io's README has the steps), clone the pinned
-thirdparty repos into place, then `cmake -B build && cmake --build build`:
+#### 2. Install apt packages
+
+```bash
+sudo apt update && sudo apt install -y \
+    build-essential cmake git pkg-config \
+    libyaml-cpp-dev python3 \
+    libopencv-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev ffmpeg
+```
+
+(The last line is for the exporters/playback only — recording itself needs
+none of it.)
+
+#### 3. Install CycloneDDS (idlc toolchain)
+
+CycloneDDS + CycloneDDS-CXX 0.10.2 into `/opt/cyclonedds`, pinned to match
+the SDK's bundled `libddscxx` — same recipe as kist-ext-sensor-io's README
+(step 4 there), then `export PATH=/opt/cyclonedds/bin:$PATH`.
+
+#### 4. Clone the pinned thirdparty repos
 
 ```bash
 git clone https://github.com/Safety-Node/kist-ext-sensor-io.git thirdparty/kist-ext-sensor-io
@@ -108,6 +148,18 @@ git clone https://github.com/unitreerobotics/unitree_sdk2.git \
     thirdparty/kist-ext-sensor-io/thirdparty/unitree_sdk2
 git -C thirdparty/kist-ext-sensor-io/thirdparty/unitree_sdk2 \
     checkout 21d0a3b2c46ee48c8fdf2783becb6be3beb0a59b
+```
+
+Both clones are gitignored; the upstream is used unmodified. To move to a
+newer upstream, bump `EXT_SENSOR_IO_COMMIT` (Dockerfile ARG) or the SHA
+above.
+
+## Build
+
+With Docker, the image is already built — this is the manual path:
+
+```bash
+cmake -B build && cmake --build build
 ```
 
 ## Usage
