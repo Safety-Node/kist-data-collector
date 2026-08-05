@@ -115,21 +115,15 @@ alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 ./build/kist_data_collector [config/config.yaml]
 ```
 
-Every stream section in `config/config.yaml` follows the same pattern —
-`enabled` + `queue_capacity`, and for `realsense_cameras` a `cameras:` list
-whose entries may carry their own `enabled` (default true; the `name` must
-match the transmitter's camera names). The collector records every enabled
-stream into one session dir, prints per-second per-stream
-`rx/wr fps, drop, gap, MB`, and on Ctrl-C drains the queues, appends the
-per-stream counters to `meta.yaml`, and exits.
+- Streams are switched in `config/config.yaml` — every section has
+  `enabled` + `queue_capacity`; camera `name`s must match the transmitter's.
+- Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
+  status once a second and writing the final counters to `meta.yaml`.
 
-Counter legend (live and in `meta.yaml`):
-
-- `dropped` / `write_errors` — recorder-side loss (queue refused / disk
-  refused). **Both 0 = every received frame is on disk.**
-- `wire_gaps` — frames that never arrived (holes in the publisher's `seq`).
-  Camera readers request RELIABLE QoS (`realsense_cameras.reliable`), so
-  isolated wire losses are recovered by retransmission before they count.
+Healthy output: `rx` = `wr`, and `drop` / `werr` / `gap` all 0 —
+`drop`/`werr` are recorder-side loss (queue / disk; 0 means every received
+frame is on disk), `gap` counts frames that never arrived (the camera
+readers recover isolated wire losses via RELIABLE retransmission).
 
 ## Deployment tuning (robot LAN)
 
