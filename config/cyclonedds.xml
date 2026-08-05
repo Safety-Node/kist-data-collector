@@ -27,7 +27,7 @@
   <Domain id="any">
     <General>
       <Interfaces>
-        <NetworkInterface name="eno2" priority="default" multicast="default"/>
+        <NetworkInterface name="lo" priority="default" multicast="default"/>
       </Interfaces>
     </General>
     <Internal>
