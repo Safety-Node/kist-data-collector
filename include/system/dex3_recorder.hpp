@@ -9,7 +9,7 @@
 // Each instance owns its subscriber and its RowRecorder, i.e. its own queue
 // and writer thread — fully independent of the lowstate recorder and of the
 // other hand. Columns: recv_ns, 7 finger motors × q/dq/ddq/tau_est, and the
-// fingertip press-sensor pads (pressure channels; see the .cpp for layout).
+// fingertip press-sensor pads (unitree_recorder/dex3_rows.hpp has the layout).
 
 #include "common/row_recorder.hpp"
 
