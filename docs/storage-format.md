@@ -22,19 +22,47 @@ fixed-schema records don't need the blob+index form; both writer shapes
 share the same bounded-queue hand-off (`common/record_queue.hpp`), so the
 loss accounting below applies uniformly.
 
-CSV schemas (one row per DDS message; floats are `%.7g`; each session's
-`meta.yaml` carries the same description next to the data):
+## CSV schemas
 
-| file | columns |
-|---|---|
-| `lowstate.csv` (158 cols) | `recv_ns`, `tick` (robot ms counter), `mode_machine`, `mode_pr`, IMU (`quat_w..z`, `gyro_x..z`, `accel_x..z`, `rpy_*`, `imu_temp`), body motors `m00..m34` × `q/dq/ddq/tau` |
-| `hand_left.csv` / `hand_right.csv` (65 cols) | `recv_ns`, finger motors `f0..f6` × `q/dq/ddq/tau` (`f0` = thumb rotation), press pads `press0..2` × 12 pressure channels |
+One row per DDS message; floats are `%.7g`. Each session's `meta.yaml`
+carries the same description next to the data.
 
-Cross-stream sync: every file (camera indices included) shares the `recv_ns`
-column — epoch ns on this host — so `pandas.merge_asof(..., on="recv_ns")`
-aligns any pair of streams.
+### Camera index CSVs — `color.idx.csv` / `depth.idx.csv` (30 fps)
 
-- `stamp_ns` — transmitter capture clock (epoch ns); `recv_ns` — this host's
-  arrival clock (epoch ns), the column that aligns cameras with every other
-  stream recorded on this machine. `offset,size` slice the frame out of the
-  blob, so the index is both the timestamp record and the random-access map.
+| column | type | meaning |
+|---|---|---|
+| `seq` | uint64 | capture sequence from the transmitter — shared between a camera's color and depth, so it is the frame-pairing key |
+| `stamp_ns` | int64 | capture time, transmitter clock (epoch ns) |
+| `recv_ns` | int64 | arrival time on this host (epoch ns) — the cross-stream alignment column |
+| `width`, `height` | int | frame size (px) |
+| `is_keyframe` *(color only)* | 0/1 | IDR marker — decoding can start here |
+| `depth_scale` *(depth only)* | float | meters per Z16 unit (0.001 D435, 0.0001 D405) |
+| `offset`, `size` | uint64 | byte slice of this frame inside the blob file |
+
+### `lowstate.csv` — 158 columns, ~1 kHz
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) |
+| `tick` | 1 | robot-side ms counter |
+| `mode_machine`, `mode_pr` | 2 | robot mode flags |
+| `quat_w`..`quat_z` | 4 | IMU orientation quaternion (w, x, y, z) |
+| `gyro_x`..`gyro_z` | 3 | angular velocity (rad/s) |
+| `accel_x`..`accel_z` | 3 | linear acceleration (m/s²) |
+| `rpy_roll`, `rpy_pitch`, `rpy_yaw` | 3 | Euler angles (rad) |
+| `imu_temp` | 1 | IMU temperature (°C) |
+| `m00_q` .. `m34_tau` | 140 | body motors 0-34 × (`q` rad, `dq` rad/s, `ddq`, `tau_est` Nm); unused slots read 0 |
+
+### `hand_left.csv` / `hand_right.csv` — 65 columns, ~830 Hz
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) — the only timestamp (the hand message carries none) |
+| `f0_q` .. `f6_tau` | 28 | finger motors 0-6 × (`q`, `dq`, `ddq`, `tau_est`); `f0` = thumb rotation (opposition), `f1`-`f2` thumb bend, `f3`-`f4` index, `f5`-`f6` middle |
+| `press0_0` .. `press2_11` | 36 | fingertip press pads 0-2 × 12 pressure channels |
+
+## Cross-stream sync
+
+Every file shares the `recv_ns` column — epoch ns on this host — so
+`pandas.merge_asof(..., on="recv_ns")` aligns any pair of streams. Within
+one camera, color and depth pair by `seq` instead (exact capture pairing).
