@@ -140,26 +140,15 @@ alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 
 ## Exporting
 
-Two session-level converters, both detecting the camera dirs and running
-one color + one depth worker thread per camera (3 cameras → 6 threads;
-the `include/export/` classes expose start/stop/wait for embedding):
-
 ```bash
-./build/export_session_mp4    <session_dir>   # for eyes: playable videos
-./build/export_session_images <session_dir>   # for training: per-frame images
+./build/export_session_mp4    <session_dir>   # playable videos
+./build/export_session_images <session_dir>   # per-frame training images
 ```
 
-- `export_session_mp4` → `<camera>/color.mp4` (libavformat remux, no
-  re-encode, per-frame `recv_ns` timestamps on a 90 kHz track, cut at the
-  first keyframe) + `<camera>/depth.mp4` (RVL decode → JET colorize
-  0.3–4 m → encode at measured fps; a *preview*, not data).
-- `export_session_images` → `<camera>/color_jpg/<seq>.jpg` (q95 — the
-  source is H.264-lossy already, so PNG would only preserve codec artifacts
-  at 4-5× the bytes) + `<camera>/depth_png/<seq>.png` (16-bit lossless,
-  pixel × `depth_scale` = meters — depth must stay PNG: JPEG is 8-bit and
-  lossy). Files are named by wire `seq`, shared between a camera's color
-  and depth, so cross-modal pairing is a filename match; `seq → recv_ns`
-  (for lowstate/hand alignment) comes from the idx CSVs.
+- `export_session_mp4` → `<camera>/color.mp4` + `<camera>/depth.mp4`
+  (depth is a colorized preview).
+- `export_session_images` → `<camera>/color_jpg/<seq>.jpg` +
+  `<camera>/depth_png/<seq>.png` (16-bit; pixel × `depth_scale` = meters).
+  The same `<seq>` in both names is the same captured frame.
 
-Fidelity note: frames before the first keyframe (≤1 s) are undecodable by
-nature and skipped in both export forms — they remain in `color.h264`.
+Both convert every camera in the session at once.
