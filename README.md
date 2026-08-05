@@ -117,6 +117,8 @@ alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 
 - Streams are switched in `config/config.yaml` — every section has
   `enabled` + `queue_capacity`; camera `name`s must match the transmitter's.
+  All keys (and the `cyclonedds.xml` transport settings):
+  [docs/configuration.md](docs/configuration.md).
 - Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
   status once a second and writing the final counters to `meta.yaml`.
 
