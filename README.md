@@ -128,24 +128,8 @@ status once a second; the final counters land in `meta.yaml`.
 
 ## Deployment tuning (robot LAN)
 
-**A subtlety worth knowing first**: the unitree SDK's
-`ChannelFactory::Init(domain, iface)` builds its own DDS config to select
-the network interface and creates the domain from it — which makes CycloneDDS
-**silently ignore `CYCLONEDDS_URI`**. Any tuning delivered via that env
-never reaches the sockets (measured: buffers stay at Cyclone's 1 MiB
-default). The collector therefore keeps ALL transport config —
-**the network interface and the receive tuning** — in
-`config/cyclonedds.xml` (path set by `unitree.dds_config`), routes it via
-`CYCLONEDDS_URI` itself, and passes the SDK an empty interface so the file
-actually applies. This is validated loudly at startup (missing file =
-fatal; the effective URI is printed) because the failure mode is silent.
-To change the NIC, edit the `NetworkInterface name=` in the XML — not
-config.yaml. (Verified: sockets at 32 MB, traffic flowing.)
-
-Three cameras' depth frames (~190 KB RVL each) arrive nearly simultaneously;
-Linux's default UDP receive buffer overflows on those bursts and sheds
-fragments — measured as depth `wire_gaps`. The buffer request above still
-needs the host kernel to allow it — once per storage machine:
+Once per storage machine, raise the kernel's receive-buffer limit so the
+16 MB request in `cyclonedds.xml` can take effect:
 
 ```bash
 sudo tee /etc/sysctl.d/99-dds-buffers.conf <<'EOF'
@@ -153,37 +137,6 @@ net.core.rmem_max = 134217728
 EOF
 sudo sysctl --system
 ```
-
-(`rmem_max` is only a permission ceiling — no memory is used unless a socket
-asks, and this image's CycloneDDS is the one asking. `rmem_default` is left
-alone since the request is explicit.)
-
-The **sender** side is handled by kist-ext-sensor-io itself since commit
-`d97b554`: its runners route `config/cyclonedds.xml` the same way (the XML
-carries the NIC, `SocketSendBufferSize 16MiB`, and MTU-capped
-`MaxMessageSize` — adopted after tcpdump showed it eliminates IP
-fragmentation of camera datagrams entirely). On the sender host, raise
-`net.core.wmem_max`/`rmem_max` (16 MiB is enough) the same `/etc/sysctl.d/`
-way, and keep the Jetson in performance mode (`jetson_clocks` — a systemd
-oneshot service survives reboots; clock state directly shows up as
-encoder-skip losses).
-
-Loss ledger from the robot-LAN measurements (2026-07/08), in the order the
-causes were found and fixed:
-
-| loss channel | scale | fix |
-|---|---|---|
-| receiver UDP rcvbuf overflow | ~0.9% of depth | host `rmem_max` + 16 MiB request |
-| sender sndbuf / Jetson clocks | ~0.4% | `wmem_max` + 16 MiB + `jetson_clocks` |
-| kernel IP reassembly (14 KB datagrams) | part of residual | `MaxMessageSize` MTU cap (sender) |
-| residual transit losses | ~0.1%, isolated 1-4 frames | **RELIABLE readers** — retransmission recovers them |
-| transmitter-side skips (head camera under load) | ~0.02%, the current floor | Jetson performance mode; inherent to the Tx latest-wins pipeline |
-
-End state (10-min run, 2 cameras + lowstate + hands): ~0.02% camera frames
-missing (all seq-recorded), every other stream zero, recorder side lossless
-in every run ever measured (`dropped`/`write_errors` 0). The residual is
-best handled at dataset-build time: gate episodes on their per-stream
-wire_gap counters (meta.yaml).
 
 ## Live record & playback walkthrough (same-machine, one camera)
 
