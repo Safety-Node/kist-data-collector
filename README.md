@@ -126,7 +126,7 @@ Set up the config once before recording:
 Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
 status once a second; the final counters land in `meta.yaml`.
 
-## Deployment tuning (robot LAN)
+## Host system setup
 
 Once per storage machine, raise the kernel's receive-buffer limit so the
 16 MB request in `cyclonedds.xml` can take effect:
