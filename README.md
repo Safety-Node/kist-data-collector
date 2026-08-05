@@ -138,38 +138,6 @@ Every file shares the `recv_ns` column (arrival clock, epoch ns) for
 cross-stream alignment. Field-level schemas, format rationale and the
 alternatives considered: [docs/storage-format.md](docs/storage-format.md).
 
-## Live record & playback walkthrough (same-machine, one camera)
-
-Everything below runs **inside the collector container** — `docker/run.sh`
-wires host networking (DDS), the X11 socket (ffplay windows), and the
-`sessions/` mount (recordings persist on the host at `$SESSIONS_DIR`,
-default `~/kist-data-collector-sessions`). Keep `storage.output_dir` under
-`sessions/` or recordings land in the container's filesystem instead.
-
-```bash
-# 0. once: transmitter on (its own container/machine)
-docker start kist-ext-sensor-io 2>/dev/null || true
-docker exec -d kist-ext-sensor-io ./build/test_realsense_transmitter
-
-# enter the collector container (build the image once with ./docker/build.sh)
-./docker/run.sh
-```
-
-Inside the container:
-
-```bash
-# 1. record — Ctrl-C to stop (or prefix: timeout --signal=INT 12 ...)
-#    (recording only some cameras? comment the rest out of realsense_cameras)
-./build/kist_data_collector
-S=$(ls -dt sessions/*/ | head -1)/head
-
-# 2. export the whole session to mp4 — one color (remux) + one depth
-#    (decode+colorize) thread per camera, all cameras concurrently
-./build/export_session_mp4 "$(dirname "$S")"
-ffplay "$S/color.mp4"
-ffplay "$S/depth.mp4"
-```
-
 ## Exporting
 
 Two session-level converters, both detecting the camera dirs and running
