@@ -9,7 +9,6 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ─── build tools + deps ───────────────────────────────────────────────────────
-# python3 is for scripts/verify_session.py (session integrity checks in-image).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -17,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     ca-certificates \
     libyaml-cpp-dev \
-    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── idlc toolchain (custom DDS IDL types) ────────────────────────────────────

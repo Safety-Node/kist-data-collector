@@ -19,7 +19,6 @@ cameras (H.264 color + RVL depth), `rt/lowstate` and the Dex3 hands into one
 | `yaml-cpp` | distro | config parsing |
 | FFmpeg / libav | distro | mp4 remux + H.264 decode (exporters), `ffplay` playback |
 | OpenCV | distro | depth colorize/encode, jpg/png writing (exporters) |
-| Python 3 | distro | `scripts/verify_session.py` |
 
 All of it is baked into the Docker image — the pinned repos are cloned at
 image build (see Build).
@@ -55,7 +54,7 @@ and the `sessions/` mount. The numbered steps below are the manual
 ```bash
 sudo apt update && sudo apt install -y \
     build-essential cmake git pkg-config \
-    libyaml-cpp-dev python3 \
+    libyaml-cpp-dev \
     libopencv-dev libavcodec-dev libavformat-dev libavutil-dev libswscale-dev ffmpeg
 ```
 
@@ -191,19 +190,6 @@ in every run ever measured (`dropped`/`write_errors` 0). The residual is
 best handled at dataset-build time: gate episodes on their per-stream
 wire_gap counters (meta.yaml).
 
-## Verifying a session
-
-```bash
-python3 scripts/verify_session.py sessions/<stamp>
-```
-
-Checks every stream's index against its blob (seq contiguity, offset/size
-chain, file size) and reports wire gaps; combine with the `dropped` /
-`write_errors` counters in `meta.yaml` for the full losslessness picture.
-(The pipeline was originally validated byte-for-byte against a deterministic
-fake transmitter — 3 cameras × 300 frames, every payload byte reproduced;
-that harness has since been removed to keep the repo minimal.)
-
 ## Live record & playback walkthrough (same-machine, one camera)
 
 Everything below runs **inside the collector container** — `docker/run.sh`
@@ -229,10 +215,7 @@ Inside the container:
 ./build/kist_data_collector config/config.yaml
 S=$(ls -dt sessions/*/ | head -1)/head
 
-# 2. structural check
-python3 scripts/verify_session.py "$(dirname "$S")"
-
-# 3. export the whole session to mp4 — one color (remux) + one depth
+# 2. export the whole session to mp4 — one color (remux) + one depth
 #    (decode+colorize) thread per camera, all cameras concurrently
 ./build/export_session_mp4 "$(dirname "$S")"
 ffplay "$S/color.mp4"

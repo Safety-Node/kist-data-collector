@@ -38,32 +38,3 @@ aligns any pair of streams.
   arrival clock (epoch ns), the column that aligns cameras with every other
   stream recorded on this machine. `offset,size` slice the frame out of the
   blob, so the index is both the timestamp record and the random-access map.
-
-Why this format:
-
-1. **Losslessness is structural.** No decode/re-encode on the hot path means
-   the write rate equals the wire rate (~0.5 MB/s color + ~3.5 MB/s depth per
-   camera, measured) — a queue in front of a plain `write()` at that rate
-   cannot back up on any sane disk, so `dropped` stays 0 by construction.
-   Decoding to per-frame images instead (180 decodes + image encodes/s for
-   3 cameras) turns the recorder CPU-bound and makes loss a tuning question.
-2. **Byte-exact fidelity.** What's on disk is bit-for-bit what the wire
-   carried — the recorder never touches the payload bytes. Depth (RVL) is
-   lossless Z16; color keeps exactly the H.264 the robot actually streamed.
-3. **Directly consumable.** `color.h264` is a standard elementary stream —
-   ffmpeg/mpv/OpenCV read it as-is (see the README's Exporting section). Depth decodes with the
-   RVL decoder already in the vendored snapshot (`RvlDepthDecoder`).
-4. **Cheap on the storage processor.** ~4 MB/s per camera measured
-   (color 0.5 + depth 3.5) — ~44 GB/hour for 3 cameras, a few percent
-   CPU total. Depth dominates; RVL is ~5× over raw Z16, lossless.
-
-Alternatives considered:
-
-- **Decoded per-frame PNGs** — friendliest to browse, but ~10× the write
-  bandwidth for color, heavy CPU, and loss becomes possible under load.
-  Better done offline from this format (and then it's reproducible).
-- **MCAP / rosbag2** — standard robotics containers, nice tooling; adds a
-  dependency plus schema registration for the custom `kist_msgs` types, and
-  readers still need ffmpeg/RVL to see pixels. Worth revisiting if many
-  low-rate streams join and per-stream files get unwieldy; the blob+index
-  layout converts to MCAP losslessly at any time.
