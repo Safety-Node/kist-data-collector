@@ -1,0 +1,8 @@
+# Build context = repo root. Exclude what the image builds/clones itself —
+# kist-ext-sensor-io (and unitree_sdk2 inside it) is cloned pinned by the
+# Dockerfile; a local working copy here must not shadow it.
+.git
+build/
+sessions/
+sessions_live/
+thirdparty/kist-ext-sensor-io/

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DDS transport config for the collector — network interface + receive tuning.
+  Loaded via CYCLONEDDS_URI, which main.cpp points at this file (path set by
+  `unitree.dds_config` in config.yaml) and validates at startup.
+
+  Why the interface lives HERE and not in config.yaml: the unitree SDK's
+  ChannelFactory::Init(domain, iface) with a non-empty iface builds its own
+  DDS config and silently discards CYCLONEDDS_URI — so the collector always
+  passes the SDK an EMPTY interface and this file must name it instead.
+
+  NetworkInterface name: the NIC toward the robot LAN on THIS machine
+  (e.g. eno2, eth0; use lo for same-machine testing).
+
+  Receive tuning (all measured against 2-3 cameras + 1 kHz lowstate + hands):
+   - SocketReceiveBufferSize: kernel UDP buffer. Depth frames (~190 KB RVL)
+     from several cameras land together; small buffers shed fragments.
+     The OS caps this at net.core.rmem_max - raise it on the host
+     (see README "Deployment tuning") or the request is silently clamped.
+   - DefragUnreliableMaxSamples: best-effort defrag slots (default 4!) - a
+     depth frame is ~130 fragments and camera bursts interleave.
+   - DeliveryQueueMaxSamples: the delivery queue ALL readers share
+     (default 256) - high-rate row streams + camera bursts overflow it,
+     shedding whichever stream is passing (the "conserved total" loss).
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="eno2" priority="default" multicast="default"/>
+      </Interfaces>
+    </General>
+    <Internal>
+      <SocketReceiveBufferSize min="16MB"/>
+      <DefragUnreliableMaxSamples>64</DefragUnreliableMaxSamples>
+      <DeliveryQueueMaxSamples>1024</DeliveryQueueMaxSamples>
+    </Internal>
+  </Domain>
+</CycloneDDS>

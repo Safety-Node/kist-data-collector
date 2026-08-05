@@ -1,0 +1,51 @@
+unitree:
+  # DDS domain id — must match the transmitter (kist-ext-sensor-io)
+  domain_id: 0
+  # DDS transport config (XML): the network interface AND the receive-buffer
+  # tuning live THERE, not here — edit config/cyclonedds.xml to change the
+  # NIC. (Why: the unitree SDK ignores CYCLONEDDS_URI when an interface is
+  # passed in code, so the collector routes everything through the XML.)
+  dds_config: config/cyclonedds.xml
+
+storage:
+  # Session dirs are created as <output_dir>/<YYYYMMDD_HHMMSS>/.
+  # Keep this under sessions/ — that's the path docker/run.sh mounts to the
+  # host; anything else lands inside the container's filesystem.
+  output_dir: sessions
+
+# RealSense cameras (kist-ext-sensor-io transmitter -> blob+index files).
+# `enabled` switches the whole camera path; each camera may also carry its
+# own `enabled` (default true). `name` selects the rt/kist/camera/<name>/...
+# topics and must match the transmitter's camera names.
+# queue_capacity bounds in-flight frames per stream (30 fps -> capacity/30 s
+# of disk-stall headroom; memory ~ capacity x compressed frame size ~30 KB).
+realsense_cameras:
+  enabled: true
+  queue_capacity: 1024
+  # RELIABLE reader QoS: lost frames are retransmitted (the transmitter's
+  # writers offer it) — recovers the isolated wire losses best-effort can't.
+  # Set false only if a transmitter stops offering RELIABLE (a reliable
+  # reader would then match nothing).
+  reliable: true
+  cameras:
+    # --------------------------------------------------------------------
+    # - name: extra_cam
+    #   enabled: false
+    # --------------------------------------------------------------------
+    - name: head
+    - name: left_wrist
+    - name: right_wrist
+
+# G1 robot state: rt/lowstate (~1 kHz measured) -> <session>/lowstate.csv
+# (recv_ns, tick, modes, IMU, per-motor q/dq/ddq/tau_est). Higher queue
+# bound than the cameras: at 1 kHz, 8192 is ~8 s of headroom (~25 MB).
+lowstate:
+  enabled: true
+  queue_capacity: 8192
+
+# Dex3-1 hands: rt/dex3/{left,right}/state -> <session>/hand_{left,right}.csv
+# (recv_ns, 7 finger motors x q/dq/ddq/tau_est, fingertip pressure pads).
+# One recorder (own queue + writer thread) per hand, independent of lowstate.
+dex3:
+  enabled: true
+  queue_capacity: 4096
