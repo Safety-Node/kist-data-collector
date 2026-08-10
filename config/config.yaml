@@ -13,6 +13,11 @@ storage:
   # host; anything else lands inside the container's filesystem.
   output_dir: sessions
 
+# Language instruction for the episodes recorded with this config — lands in
+# meta.yaml (`task:`); the LeRobot/GR00T export uses it as the task
+# description. Update it when the task changes.
+task: ""
+
 # RealSense cameras (kist-ext-sensor-io transmitter -> blob+index files).
 # `enabled` switches the whole camera path; each camera may also carry its
 # own `enabled` (default true). `name` selects the rt/kist/camera/<name>/...
@@ -55,3 +60,24 @@ dex3:
 uwb:
   enabled: true
   queue_capacity: 256
+
+# Command (action) streams — what the controllers told the robot to do,
+# the action labels for VLA training. Silent while no controller publishes
+# on the topic (time gaps = no commands, not loss), so keeping them enabled
+# is free. Rows carry mode/q/dq/tau/kp/kd per motor; q = absolute target.
+
+# Body commands, low-level control mode: rt/lowcmd -> <session>/lowcmd.csv
+lowcmd:
+  enabled: true
+  queue_capacity: 8192
+
+# Arm commands while the loco controller holds the legs (same LowCmd_ type):
+# rt/arm_sdk -> <session>/arm_sdk.csv
+arm_sdk:
+  enabled: true
+  queue_capacity: 8192
+
+# Dex3 hand commands: rt/dex3/{left,right}/cmd -> <session>/hand_cmd_{side}.csv
+dex3_cmd:
+  enabled: true
+  queue_capacity: 4096

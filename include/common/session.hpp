@@ -25,10 +25,13 @@ struct SessionInfo {
 // Creates <output_dir>/<YYYYMMDD_HHMMSS>/ (and parents). Empty dir on failure.
 SessionInfo session_create(const std::string& output_dir);
 
-// Writes meta.yaml: start time, DDS endpoint, camera list, format notes.
+// Writes meta.yaml: start time, DDS endpoint, task label (the language
+// instruction for this episode — VLA training reads it), camera list,
+// format notes.
 void session_write_meta(const SessionInfo& session, int domain_id,
                         const std::string& dds_config,
-                        const std::vector<std::string>& cameras);
+                        const std::vector<std::string>& cameras,
+                        const std::string& task = "");
 
 // Appends the end time + per-stream counters to meta.yaml on clean stop.
 struct StreamSummary {

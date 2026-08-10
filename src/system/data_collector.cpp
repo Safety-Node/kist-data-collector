@@ -43,6 +43,19 @@ DataCollector::Settings DataCollector::Settings::from_yaml(const YAML::Node& roo
         s.uwb_enabled        = uw["enabled"].as<bool>(false);
         s.uwb_queue_capacity = uw["queue_capacity"].as<size_t>(s.uwb_queue_capacity);
     }
+    if (const auto lc = root["lowcmd"]; lc) {
+        s.lowcmd_enabled        = lc["enabled"].as<bool>(false);
+        s.lowcmd_queue_capacity = lc["queue_capacity"].as<size_t>(s.lowcmd_queue_capacity);
+    }
+    if (const auto as = root["arm_sdk"]; as) {
+        s.arm_sdk_enabled        = as["enabled"].as<bool>(false);
+        s.arm_sdk_queue_capacity = as["queue_capacity"].as<size_t>(s.arm_sdk_queue_capacity);
+    }
+    if (const auto dc = root["dex3_cmd"]; dc) {
+        s.dex3_cmd_enabled        = dc["enabled"].as<bool>(false);
+        s.dex3_cmd_queue_capacity = dc["queue_capacity"].as<size_t>(s.dex3_cmd_queue_capacity);
+    }
+    s.task = root["task"] ? root["task"].as<std::string>("") : "";
     return s;
 }
 
@@ -51,10 +64,15 @@ bool DataCollector::start(const Settings& settings) {
     settings_ = settings;
 
     if (settings_.cameras.empty() && !settings_.lowstate_enabled &&
-        !settings_.dex3_enabled && !settings_.uwb_enabled) {
+        !settings_.dex3_enabled && !settings_.uwb_enabled &&
+        !settings_.lowcmd_enabled && !settings_.arm_sdk_enabled &&
+        !settings_.dex3_cmd_enabled) {
         std::cerr << "[kist_data_collector] nothing to record — no stream enabled in config\n";
         return false;
     }
+    if (settings_.task.empty())
+        std::cerr << "[kist_data_collector] warning: no `task:` in config — "
+                     "meta.yaml gets an empty task label\n";
 
     session_ = session_create(settings_.output_dir);
     if (session_.dir.empty()) return false;
@@ -105,17 +123,56 @@ bool DataCollector::start(const Settings& settings) {
         }
     }
 
-    if (cameras_.empty() && !lowstate_ && hands_.empty() && !uwb_) {
+    // Command (action) streams: rt/lowcmd and rt/arm_sdk share the
+    // LowCmd_ recorder (topic + csv name differ); hand commands get one
+    // recorder per side, like the state twins.
+    struct BodyCmd { bool enabled; size_t capacity; const char* topic; const char* csv; };
+    for (const auto& bc : {
+             BodyCmd{settings_.lowcmd_enabled, settings_.lowcmd_queue_capacity,
+                     kLowCmdTopic, "lowcmd.csv"},
+             BodyCmd{settings_.arm_sdk_enabled, settings_.arm_sdk_queue_capacity,
+                     kArmSdkTopic, "arm_sdk.csv"}}) {
+        if (!bc.enabled) continue;
+        auto rec = std::make_unique<LowcmdRecorder>();
+        if (!rec->start(settings_.domain_id, sdk_iface, session_.dir,
+                        bc.capacity, bc.topic, bc.csv)) {
+            std::cerr << "[kist_data_collector] " << bc.topic << " failed — skipped\n";
+            continue;
+        }
+        body_cmds_.push_back(std::move(rec));
+    }
+
+    if (settings_.dex3_cmd_enabled) {
+        for (const std::string side : {"left", "right"}) {
+            auto rec = std::make_unique<Dex3CmdRecorder>();
+            if (!rec->start(settings_.domain_id, sdk_iface, session_.dir, side,
+                            settings_.dex3_cmd_queue_capacity)) {
+                std::cerr << "[kist_data_collector] dex3 cmd " << side << " failed — skipped\n";
+                continue;
+            }
+            hand_cmds_.push_back(std::move(rec));
+        }
+    }
+
+    if (cameras_.empty() && !lowstate_ && hands_.empty() && !uwb_ &&
+        body_cmds_.empty() && hand_cmds_.empty()) {
         std::cerr << "[kist_data_collector] no streams started\n";
         return false;
     }
-    session_write_meta(session_, settings_.domain_id, settings_.dds_uri, started);
+    session_write_meta(session_, settings_.domain_id, settings_.dds_uri, started,
+                       settings_.task);
 
     last_cam_.assign(cameras_.size(), {});
     last_hand_.assign(hands_.size(), {0, 0});
-    std::printf("[kist_data_collector] recording %zu camera(s)%s + %zu hand(s) -> %s (domain=%d)\n",
+    last_body_cmd_.assign(body_cmds_.size(), {0, 0});
+    last_hand_cmd_.assign(hand_cmds_.size(), {0, 0});
+    std::printf("[kist_data_collector] recording %zu camera(s)%s + %zu hand(s) + "
+                "%zu cmd stream(s) -> %s (domain=%d)\n",
                 cameras_.size(), lowstate_ ? " + lowstate" : "", hands_.size(),
+                body_cmds_.size() + hand_cmds_.size(),
                 session_.dir.c_str(), settings_.domain_id);
+    if (!settings_.task.empty())
+        std::printf("[kist_data_collector] task: %s\n", settings_.task.c_str());
     running_ = true;
     return true;
 }
@@ -169,6 +226,26 @@ void DataCollector::print_report() {
                     human_size(h.bytes).c_str());
         last_hand_[i] = {h.received, h.written};
     }
+    for (size_t i = 0; i < body_cmds_.size(); ++i) {
+        const auto c = body_cmds_[i]->stats();
+        std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
+                    body_cmds_[i]->label().c_str(),
+                    (unsigned long long)(c.received - last_body_cmd_[i].first),
+                    (unsigned long long)(c.written  - last_body_cmd_[i].second),
+                    (unsigned long long)c.dropped, (unsigned long long)c.write_errors,
+                    human_size(c.bytes).c_str());
+        last_body_cmd_[i] = {c.received, c.written};
+    }
+    for (size_t i = 0; i < hand_cmds_.size(); ++i) {
+        const auto c = hand_cmds_[i]->stats();
+        std::printf("  cmd_%-8s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
+                    hand_cmds_[i]->side().c_str(),
+                    (unsigned long long)(c.received - last_hand_cmd_[i].first),
+                    (unsigned long long)(c.written  - last_hand_cmd_[i].second),
+                    (unsigned long long)c.dropped, (unsigned long long)c.write_errors,
+                    human_size(c.bytes).c_str());
+        last_hand_cmd_[i] = {c.received, c.written};
+    }
 }
 
 void DataCollector::stop() {
@@ -192,6 +269,14 @@ void DataCollector::stop() {
         uwb_->stop();
         summary.push_back({"uwb", "position", uwb_->stats()});
     }
+    for (auto& rec : body_cmds_) {
+        rec->stop();
+        summary.push_back({"unitree", rec->label(), rec->stats()});
+    }
+    for (auto& rec : hand_cmds_) {
+        rec->stop();
+        summary.push_back({"dex3", "hand_cmd_" + rec->side(), rec->stats()});
+    }
     session_finalize_meta(session_, summary);
 
     for (const auto& s : summary)
@@ -207,6 +292,8 @@ void DataCollector::stop() {
     lowstate_.reset();
     hands_.clear();
     uwb_.reset();
+    body_cmds_.clear();
+    hand_cmds_.clear();
     running_ = false;
 }
 

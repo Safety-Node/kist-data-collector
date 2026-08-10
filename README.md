@@ -117,6 +117,7 @@ the `realsense_cameras` list):
 ./build/test_lowstate_recorder    # rt/lowstate only
 ./build/test_dex3_recorder        # Dex3 hands only
 ./build/test_uwb_recorder         # UWB fixes only
+./build/test_cmd_recorder         # command streams only (lowcmd, arm_sdk, hand cmds)
 ```
 
 ## System setup
