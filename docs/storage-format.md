@@ -11,6 +11,10 @@ sessions/<YYYYMMDD_HHMMSS>/
   hand_left.csv           # Dex3 rt/dex3/<side>/state, one row per message (if enabled):
   hand_right.csv          #   recv_ns, 7 finger motors x q/dq/ddq/tau, pressure pads
   uwb.csv                 # UWB fixes, one row per rt/kist/uwb/pose (if enabled)
+  lowcmd.csv              # body commands rt/lowcmd, one row per message (if enabled):
+  arm_sdk.csv             #   recv_ns, modes, per-motor mode/q/dq/tau/kp/kd (arm_sdk: same type)
+  hand_cmd_left.csv       # Dex3 rt/dex3/<side>/cmd, one row per message (if enabled):
+  hand_cmd_right.csv      #   recv_ns, 7 finger motors x mode/q/dq/tau/kp/kd
   <camera>/               # one dir per camera name (head, left_wrist, ...)
     color.h264            # Annex-B H.264 NAL units, appended frame by frame
     color.idx.csv         # seq,stamp_ns,recv_ns,width,height,is_keyframe,offset,size
@@ -72,6 +76,31 @@ carries the same description next to the data.
 
 The transmitter publishes valid fixes only and goes silent otherwise — a
 time gap between rows means "no fix", not loss.
+
+### `lowcmd.csv` / `arm_sdk.csv` — 213 columns, up to ~1 kHz
+
+One row per `rt/lowcmd` / `rt/arm_sdk` message (same unitree_hg LowCmd
+type). These are the **action** streams: what a controller told the robot
+to do, next to the `lowstate.csv` observation.
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) — the only timestamp (commands carry no tick) |
+| `mode_pr`, `mode_machine` | 2 | control-mode bytes echoed from the command |
+| `m00_mode` .. `m34_kd` | 210 | body motors 0-34 × (`mode`, `q` rad — absolute joint target, `dq` rad/s, `tau` Nm feed-forward, `kp`, `kd` gains) |
+
+A command topic is silent while no controller publishes on it — a time gap
+means "no commands", not loss.
+
+### `hand_cmd_left.csv` / `hand_cmd_right.csv` — 43 columns
+
+One row per `rt/dex3/<side>/cmd` message — the action twin of
+`hand_<side>.csv`.
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) |
+| `f0_mode` .. `f6_kd` | 42 | finger motors 0-6 × (`mode`, `q`, `dq`, `tau`, `kp`, `kd`); `f0` = thumb rotation |
 
 ## Cross-stream sync
 

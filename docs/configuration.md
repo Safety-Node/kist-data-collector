@@ -20,6 +20,12 @@ inside the container (`nano` is installed) for a one-off.
 |---|---|---|
 | `output_dir` | `sessions` | session dirs are created as `<output_dir>/<YYYYMMDD_HHMMSS>/`. Keep it under `sessions/` — that's the path `docker/run.sh` mounts to the host; anything else stays inside the container |
 
+### `task`
+
+| Key | Default | Meaning |
+|---|---|---|
+| `task` | `""` | language instruction for the episodes recorded with this config — written into meta.yaml; the LeRobot/GR00T export uses it as the task description. Update it when the task changes (empty = warning at start) |
+
 ### `realsense_cameras`
 
 | Key | Default | Meaning |
@@ -50,6 +56,21 @@ inside the container (`nano` is installed) for a one-off.
 |---|---|---|
 | `enabled` | `false` | record UWB fixes (`rt/kist/uwb/pose`) into `uwb.csv` |
 | `queue_capacity` | `256` | fixes arrive at ~10 Hz |
+
+### `lowcmd` / `arm_sdk` / `dex3_cmd`
+
+Command (action) streams — what the controllers told the robot to do. A
+command topic is silent while no controller publishes (time gaps = no
+commands, not loss), so keeping them enabled is free.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `lowcmd.enabled` | `false` | record `rt/lowcmd` (low-level body commands) into `lowcmd.csv` |
+| `lowcmd.queue_capacity` | `8192` | commands stream at up to ~1 kHz |
+| `arm_sdk.enabled` | `false` | record `rt/arm_sdk` (arm commands under the loco controller; same LowCmd type) into `arm_sdk.csv` |
+| `arm_sdk.queue_capacity` | `8192` | |
+| `dex3_cmd.enabled` | `false` | record `rt/dex3/{left,right}/cmd` into `hand_cmd_{left,right}.csv` |
+| `dex3_cmd.queue_capacity` | `4096` | |
 
 ## `cyclonedds.xml`
 

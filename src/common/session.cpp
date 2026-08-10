@@ -44,13 +44,15 @@ SessionInfo session_create(const std::string& output_dir) {
 
 void session_write_meta(const SessionInfo& session, int domain_id,
                         const std::string& dds_config,
-                        const std::vector<std::string>& cameras) {
+                        const std::vector<std::string>& cameras,
+                        const std::string& task) {
     std::ofstream f(std::filesystem::path(session.dir) / "meta.yaml", std::ios::trunc);
     f << "session:\n"
       << "  started_utc: " << format_time(session.started_ns, "%Y-%m-%dT%H:%M:%SZ", true) << "\n"
       << "  started_epoch_ns: " << session.started_ns << "\n"
       << "  domain_id: " << domain_id << "\n"
       << "  dds_config: " << dds_config << "\n"
+      << "  task: \"" << task << "\"\n"
       << "cameras:\n";
     for (const auto& name : cameras)
         f << "  - " << name << "\n";
@@ -68,6 +70,13 @@ void session_write_meta(const SessionInfo& session, int domain_id,
       << "         press pads press0..8 x 12 pressure channels.\n"
       << "  uwb.csv: one row per rt/kist/uwb/pose fix — recv_ns, stamp_ns, x, y, z\n"
       << "         (UWB local frame, m); time gaps = no fix, not loss.\n"
+      << "  lowcmd.csv / arm_sdk.csv: one row per rt/lowcmd / rt/arm_sdk msg —\n"
+      << "         recv_ns, mode_pr/mode_machine, body motors m00..m34 x\n"
+      << "         mode/q/dq/tau/kp/kd (q = absolute joint target); time gaps =\n"
+      << "         no controller publishing, not loss.\n"
+      << "  hand_cmd_{left,right}.csv: one row per rt/dex3/<side>/cmd msg —\n"
+      << "         recv_ns, finger motors f0..f6 x mode/q/dq/tau/kp/kd; time\n"
+      << "         gaps = no commands, not loss.\n"
       << "  clocks: stamp_ns = transmitter capture clock (epoch ns);\n"
       << "          recv_ns = this host's arrival clock (epoch ns) — the\n"
       << "          cross-stream alignment column, shared by every file above.\n";

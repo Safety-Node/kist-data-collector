@@ -44,12 +44,16 @@ target_include_directories(realsense_recorder PUBLIC include)
 target_link_libraries(realsense_recorder PUBLIC realsense_rx recorder_common)
 
 # LowstateRecorder (rt/lowstate, ~1 kHz) + Dex3Recorder (rt/dex3/<side>/state
-# — fingers are NOT in lowstate) -> one CSV row per message. Each instance
-# owns its queue + writer thread, so hands and lowstate never share a
-# storage path. Needs only the SDK — no camera deps.
+# — fingers are NOT in lowstate) -> one CSV row per message, plus their
+# command (action) twins: LowcmdRecorder (rt/lowcmd | rt/arm_sdk, same
+# LowCmd_ type) + Dex3CmdRecorder (rt/dex3/<side>/cmd). Each instance owns
+# its queue + writer thread, so streams never share a storage path. Needs
+# only the SDK — no camera deps.
 add_library(unitree_recorder STATIC
     src/system/lowstate_recorder.cpp
     src/system/dex3_recorder.cpp
+    src/system/lowcmd_recorder.cpp
+    src/system/dex3_cmd_recorder.cpp
 )
 target_include_directories(unitree_recorder PUBLIC include)
 target_link_libraries(unitree_recorder PUBLIC unitree_sdk2 recorder_common)
@@ -86,6 +90,9 @@ target_link_libraries(test_dex3_recorder PRIVATE unitree_recorder yaml-cpp)
 
 add_executable(test_uwb_recorder test/test_uwb_recorder.cpp)
 target_link_libraries(test_uwb_recorder PRIVATE uwb_recorder yaml-cpp)
+
+add_executable(test_cmd_recorder test/test_cmd_recorder.cpp)
+target_link_libraries(test_cmd_recorder PRIVATE unitree_recorder yaml-cpp)
 
 # ─── offline export (optional) ────────────────────────────────────────────────
 # export/: start/stop worker classes, one thread per stream —

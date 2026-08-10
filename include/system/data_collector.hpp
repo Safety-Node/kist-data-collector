@@ -2,7 +2,9 @@
 
 #include "common/session.hpp"
 #include "system/realsense_recorder.hpp"
+#include "system/dex3_cmd_recorder.hpp"
 #include "system/dex3_recorder.hpp"
+#include "system/lowcmd_recorder.hpp"
 #include "system/lowstate_recorder.hpp"
 #include "system/uwb_recorder.hpp"
 
@@ -24,6 +26,10 @@ public:
         int         domain_id = 0;
         std::string dds_uri;                // recorded into meta.yaml
         std::string output_dir = "sessions";
+        // Language instruction for this recording (config `task:`) —
+        // recorded into meta.yaml; the LeRobot/GR00T export reads it as
+        // the episode's task description.
+        std::string task;
 
         std::vector<std::string> cameras;   // enabled camera names
         size_t camera_queue_capacity = 1024;
@@ -43,6 +49,14 @@ public:
 
         bool   uwb_enabled = false;
         size_t uwb_queue_capacity = 256;
+
+        // Command (action) streams — silent while no controller publishes.
+        bool   lowcmd_enabled = false;      // rt/lowcmd, up to ~1 kHz
+        size_t lowcmd_queue_capacity = 8192;
+        bool   arm_sdk_enabled = false;     // rt/arm_sdk (same LowCmd_ type)
+        size_t arm_sdk_queue_capacity = 8192;
+        bool   dex3_cmd_enabled = false;    // rt/dex3/{left,right}/cmd
+        size_t dex3_cmd_queue_capacity = 4096;
 
         // config.yaml -> Settings (dds_uri is filled by apply_dds_config).
         static Settings from_yaml(const YAML::Node& root);
@@ -70,6 +84,8 @@ private:
     std::unique_ptr<LowstateRecorder>               lowstate_;
     std::vector<std::unique_ptr<Dex3Recorder>>      hands_;
     std::unique_ptr<UwbRecorder>                    uwb_;
+    std::vector<std::unique_ptr<LowcmdRecorder>>    body_cmds_;   // lowcmd / arm_sdk
+    std::vector<std::unique_ptr<Dex3CmdRecorder>>   hand_cmds_;
 
     // print_report deltas (previous window's counters).
     struct CamLast { uint64_t c_rx = 0, c_wr = 0, d_rx = 0, d_wr = 0; };
@@ -77,6 +93,8 @@ private:
     uint64_t                                   last_ls_rx_ = 0, last_ls_wr_ = 0;
     uint64_t                                   last_uw_rx_ = 0, last_uw_wr_ = 0;
     std::vector<std::pair<uint64_t, uint64_t>> last_hand_;
+    std::vector<std::pair<uint64_t, uint64_t>> last_body_cmd_;
+    std::vector<std::pair<uint64_t, uint64_t>> last_hand_cmd_;
 
     bool running_ = false;
 };
