@@ -74,6 +74,10 @@ public:
     // Drains the queues, appends the summary to meta.yaml, prints it.
     void stop();
 
+    // Appends the operator's success/fail label to meta.yaml. Call after
+    // stop(); empty result = leave the episode unlabeled.
+    void write_result(const std::string& result);
+
     const std::string& session_dir() const { return session_.dir; }
 
 private:

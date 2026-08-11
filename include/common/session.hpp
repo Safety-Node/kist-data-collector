@@ -42,4 +42,8 @@ struct StreamSummary {
 void session_finalize_meta(const SessionInfo& session,
                            const std::vector<StreamSummary>& streams);
 
+// Appends the operator's outcome label (`result: success|fail`) to meta.yaml.
+// Call after session_finalize_meta; no-op when result is empty (unlabeled).
+void session_append_result(const SessionInfo& session, const std::string& result);
+
 } // namespace kist
