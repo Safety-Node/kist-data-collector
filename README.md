@@ -106,7 +106,9 @@ Set up the config once before recording:
 ```
 
 Records until Ctrl-C into `sessions/<timestamp>/`, printing per-stream
-status once a second; the final counters land in `meta.yaml`.
+status once a second; the final counters land in `meta.yaml`. After the
+stop drains, one keypress labels the episode — `S` = success, `F` = fail
+(Ctrl-C again skips) — written to `meta.yaml` as `result: success|fail`.
 
 To record a single stream in isolation (same session layout, that stream
 only — regardless of its `enabled` flag in the config; cameras still follow

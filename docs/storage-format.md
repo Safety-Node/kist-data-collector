@@ -5,7 +5,9 @@ file + one CSV index per stream** (this is what's implemented):
 
 ```
 sessions/<YYYYMMDD_HHMMSS>/
-  meta.yaml               # start/end (UTC + epoch ns), endpoint, per-stream counters
+  meta.yaml               # start/end (UTC + epoch ns), endpoint, per-stream counters,
+                          #   operator label `result: success|fail` (S/F keypress at
+                          #   Ctrl-C stop; absent = unlabeled)
   lowstate.csv            # G1 rt/lowstate @~1 kHz, one row per message (if enabled):
                           #   recv_ns,tick,modes,IMU,per-motor q/dq/ddq/tau_est
   hand_left.csv           # Dex3 rt/dex3/<side>/state, one row per message (if enabled):

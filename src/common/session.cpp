@@ -101,4 +101,10 @@ void session_finalize_meta(const SessionInfo& session,
     }
 }
 
+void session_append_result(const SessionInfo& session, const std::string& result) {
+    if (result.empty() || session.dir.empty()) return;
+    std::ofstream f(std::filesystem::path(session.dir) / "meta.yaml", std::ios::app);
+    f << "result: " << result << "\n";
+}
+
 } // namespace kist

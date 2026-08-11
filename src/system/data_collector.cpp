@@ -297,4 +297,8 @@ void DataCollector::stop() {
     running_ = false;
 }
 
+void DataCollector::write_result(const std::string& result) {
+    session_append_result(session_, result);
+}
+
 } // namespace kist
