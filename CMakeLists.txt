@@ -63,13 +63,35 @@ add_library(uwb_recorder STATIC src/system/uwb_recorder.cpp)
 target_include_directories(uwb_recorder PUBLIC include)
 target_link_libraries(uwb_recorder PUBLIC uwb_io recorder_common)
 
+# MotionTokenRecorder: gearsonic's decoder-input token (rt/kist/motion_token)
+# -> one CSV row per CONTROL tick. Wire type from idl/kist_msgs.idl — a COPY
+# of the source of truth in kist-gearsonic-inference (its idl/kist_msgs.idl);
+# keep the two in sync when the contract changes. CYCLONE_IDLC comes from
+# the thirdparty snapshot's find_program (guarded above via realsense_rx).
+set(KIST_MSGS_GEN ${CMAKE_BINARY_DIR}/kist_msgs_gen)
+file(MAKE_DIRECTORY ${KIST_MSGS_GEN})
+add_custom_command(
+    OUTPUT ${KIST_MSGS_GEN}/kist_msgs.hpp ${KIST_MSGS_GEN}/kist_msgs.cpp
+    COMMAND ${CYCLONE_IDLC} -l cxx ${CMAKE_CURRENT_SOURCE_DIR}/idl/kist_msgs.idl
+    WORKING_DIRECTORY ${KIST_MSGS_GEN}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/idl/kist_msgs.idl
+    COMMENT "idlc: kist_msgs.idl -> C++ DDS types")
+add_library(kist_msgs_idl STATIC ${KIST_MSGS_GEN}/kist_msgs.cpp)
+target_include_directories(kist_msgs_idl PUBLIC ${KIST_MSGS_GEN})
+target_link_libraries(kist_msgs_idl PUBLIC unitree_sdk2)
+
+add_library(gearsonic_recorder STATIC src/system/motion_token_recorder.cpp)
+target_include_directories(gearsonic_recorder PUBLIC include)
+target_link_libraries(gearsonic_recorder PUBLIC kist_msgs_idl recorder_common)
+
 # ─── whole-app assembly (system/) ─────────────────────────────────────────────
 # DataCollector — every enabled recorder behind one start/stop, into one
 # session dir (settings from yaml, 1 Hz report, drain + meta summary on stop).
 add_library(data_collector STATIC src/system/data_collector.cpp)
 target_include_directories(data_collector PUBLIC include)
 target_link_libraries(data_collector
-    PUBLIC realsense_recorder unitree_recorder uwb_recorder yaml-cpp)
+    PUBLIC realsense_recorder unitree_recorder uwb_recorder gearsonic_recorder
+           yaml-cpp)
 
 # ─── runners ──────────────────────────────────────────────────────────────────
 # Main collector: config -> DataCollector, report loop, stop on signal.

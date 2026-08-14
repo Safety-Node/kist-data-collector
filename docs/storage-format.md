@@ -17,6 +17,8 @@ sessions/<YYYYMMDD_HHMMSS>/
   arm_sdk.csv             #   recv_ns, modes, per-motor mode/q/dq/tau/kp/kd (arm_sdk: same type)
   hand_cmd_left.csv       # Dex3 rt/dex3/<side>/cmd, one row per message (if enabled):
   hand_cmd_right.csv      #   recv_ns, 7 finger motors x mode/q/dq/tau/kp/kd
+  motion_token.csv        # gearsonic decoder tokens rt/kist/motion_token @50 Hz (if enabled):
+                          #   recv_ns,stamp_ns,seq,mode tags,64-dim token
   <camera>/               # one dir per camera name (head, left_wrist, ...)
     color.h264            # Annex-B H.264 NAL units, appended frame by frame
     color.idx.csv         # seq,stamp_ns,recv_ns,width,height,is_keyframe,offset,size
@@ -103,6 +105,23 @@ One row per `rt/dex3/<side>/cmd` message — the action twin of
 |---|---|---|
 | `recv_ns` | 1 | arrival time on this host (epoch ns) |
 | `f0_mode` .. `f6_kd` | 42 | finger motors 0-6 × (`mode`, `q`, `dq`, `tau`, `kp`, `kd`); `f0` = thumb rotation |
+
+### `motion_token.csv` — 69 columns, 50 Hz
+
+One row per `rt/kist/motion_token` message: the 64-dim SONIC token the
+gearsonic whole-body decoder actually consumed that tick — the **training
+action** next to the observations. It is not recomputable offline (the
+encoder input is gearsonic's planner/teleop pipeline state, not robot
+state), which is why gearsonic publishes it live.
+
+| columns | n | meaning |
+|---|---|---|
+| `recv_ns` | 1 | arrival time on this host (epoch ns) |
+| `stamp_ns` | 1 | gearsonic's computation-tick clock (epoch ns) — the 50 Hz alignment key |
+| `seq` | 1 | +1 per decoded tick; gaps = robot outside CONTROL (INIT, damping, e-stop), not loss |
+| `arbiter_mode` | 1 | 0 normal / 1 teleop / 2 vla / 3 recovering — the training export keeps `1` |
+| `encoder_mode` | 1 | 0 g1 / 1 teleop / 255 = encoder skipped (vla, recovery) |
+| `t00` .. `t63` | 64 | the token values |
 
 ## Cross-stream sync
 

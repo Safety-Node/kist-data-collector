@@ -81,3 +81,10 @@ arm_sdk:
 dex3_cmd:
   enabled: true
   queue_capacity: 4096
+
+# Gearsonic decoder-input tokens (the training action ground truth — not
+# recomputable offline): rt/kist/motion_token -> <session>/motion_token.csv.
+# 50 Hz while the robot is in CONTROL; silent otherwise (gaps = not loss).
+motion_token:
+  enabled: true
+  queue_capacity: 4096
