@@ -144,6 +144,9 @@ sessions/<YYYYMMDD_HHMMSS>/
   lowstate.csv               # robot state, one row per message
   hand_left.csv hand_right.csv
   uwb.csv
+  lowcmd.csv arm_sdk.csv     # command (action) streams
+  hand_cmd_left.csv hand_cmd_right.csv
+  motion_token.csv           # gearsonic decoder tokens (training action)
   <camera>/
     color.h264  color.idx.csv    # compressed payloads verbatim,
     depth.rvl   depth.idx.csv    #   one CSV index per stream

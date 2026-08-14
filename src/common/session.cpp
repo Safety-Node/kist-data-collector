@@ -77,6 +77,11 @@ void session_write_meta(const SessionInfo& session, int domain_id,
       << "  hand_cmd_{left,right}.csv: one row per rt/dex3/<side>/cmd msg —\n"
       << "         recv_ns, finger motors f0..f6 x mode/q/dq/tau/kp/kd; time\n"
       << "         gaps = no commands, not loss.\n"
+      << "  motion_token.csv: one row per rt/kist/motion_token msg (50 Hz) —\n"
+      << "         recv_ns, stamp_ns (gearsonic tick clock), seq, arbiter_mode\n"
+      << "         (0 normal/1 teleop/2 vla/3 recovering), encoder_mode, token\n"
+      << "         t00..t63; seq/time gaps = robot outside CONTROL, not loss.\n"
+      << "         Training export keeps arbiter_mode == 1 (teleop) rows.\n"
       << "  clocks: stamp_ns = transmitter capture clock (epoch ns);\n"
       << "          recv_ns = this host's arrival clock (epoch ns) — the\n"
       << "          cross-stream alignment column, shared by every file above.\n";

@@ -72,6 +72,17 @@ commands, not loss), so keeping them enabled is free.
 | `dex3_cmd.enabled` | `false` | record `rt/dex3/{left,right}/cmd` into `hand_cmd_{left,right}.csv` |
 | `dex3_cmd.queue_capacity` | `4096` | |
 
+### `motion_token`
+
+Gearsonic's decoder-input tokens (`rt/kist/motion_token`) — the training
+action ground truth. 50 Hz while the robot is in CONTROL, silent otherwise
+(seq/time gaps = not controlled, not loss).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | record into `motion_token.csv` |
+| `queue_capacity` | `4096` | 50 Hz, ~270 B rows |
+
 ## `cyclonedds.xml`
 
 The network interface and the DDS transport tuning live here — **not in

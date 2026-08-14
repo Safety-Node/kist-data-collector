@@ -55,6 +55,10 @@ DataCollector::Settings DataCollector::Settings::from_yaml(const YAML::Node& roo
         s.dex3_cmd_enabled        = dc["enabled"].as<bool>(false);
         s.dex3_cmd_queue_capacity = dc["queue_capacity"].as<size_t>(s.dex3_cmd_queue_capacity);
     }
+    if (const auto mt = root["motion_token"]; mt) {
+        s.motion_token_enabled        = mt["enabled"].as<bool>(false);
+        s.motion_token_queue_capacity = mt["queue_capacity"].as<size_t>(s.motion_token_queue_capacity);
+    }
     s.task = root["task"] ? root["task"].as<std::string>("") : "";
     return s;
 }
@@ -66,7 +70,7 @@ bool DataCollector::start(const Settings& settings) {
     if (settings_.cameras.empty() && !settings_.lowstate_enabled &&
         !settings_.dex3_enabled && !settings_.uwb_enabled &&
         !settings_.lowcmd_enabled && !settings_.arm_sdk_enabled &&
-        !settings_.dex3_cmd_enabled) {
+        !settings_.dex3_cmd_enabled && !settings_.motion_token_enabled) {
         std::cerr << "[kist_data_collector] nothing to record — no stream enabled in config\n";
         return false;
     }
@@ -154,8 +158,17 @@ bool DataCollector::start(const Settings& settings) {
         }
     }
 
+    if (settings_.motion_token_enabled) {
+        motion_token_ = std::make_unique<MotionTokenRecorder>();
+        if (!motion_token_->start(settings_.domain_id, sdk_iface, session_.dir,
+                                  settings_.motion_token_queue_capacity)) {
+            std::cerr << "[kist_data_collector] motion_token failed — skipped\n";
+            motion_token_.reset();
+        }
+    }
+
     if (cameras_.empty() && !lowstate_ && hands_.empty() && !uwb_ &&
-        body_cmds_.empty() && hand_cmds_.empty()) {
+        body_cmds_.empty() && hand_cmds_.empty() && !motion_token_) {
         std::cerr << "[kist_data_collector] no streams started\n";
         return false;
     }
@@ -167,9 +180,10 @@ bool DataCollector::start(const Settings& settings) {
     last_body_cmd_.assign(body_cmds_.size(), {0, 0});
     last_hand_cmd_.assign(hand_cmds_.size(), {0, 0});
     std::printf("[kist_data_collector] recording %zu camera(s)%s + %zu hand(s) + "
-                "%zu cmd stream(s) -> %s (domain=%d)\n",
+                "%zu cmd stream(s)%s -> %s (domain=%d)\n",
                 cameras_.size(), lowstate_ ? " + lowstate" : "", hands_.size(),
                 body_cmds_.size() + hand_cmds_.size(),
+                motion_token_ ? " + motion_token" : "",
                 session_.dir.c_str(), settings_.domain_id);
     if (!settings_.task.empty())
         std::printf("[kist_data_collector] task: %s\n", settings_.task.c_str());
@@ -246,6 +260,17 @@ void DataCollector::print_report() {
                     human_size(c.bytes).c_str());
         last_hand_cmd_[i] = {c.received, c.written};
     }
+    if (motion_token_) {
+        const auto m = motion_token_->stats();
+        std::printf("  %-12s rx %4llu wr %4llu hz drop %llu werr %llu %s\n",
+                    "motion_token",
+                    (unsigned long long)(m.received - last_mt_rx_),
+                    (unsigned long long)(m.written  - last_mt_wr_),
+                    (unsigned long long)m.dropped, (unsigned long long)m.write_errors,
+                    human_size(m.bytes).c_str());
+        last_mt_rx_ = m.received;
+        last_mt_wr_ = m.written;
+    }
 }
 
 void DataCollector::stop() {
@@ -277,6 +302,10 @@ void DataCollector::stop() {
         rec->stop();
         summary.push_back({"dex3", "hand_cmd_" + rec->side(), rec->stats()});
     }
+    if (motion_token_) {
+        motion_token_->stop();
+        summary.push_back({"gearsonic", "motion_token", motion_token_->stats()});
+    }
     session_finalize_meta(session_, summary);
 
     for (const auto& s : summary)
@@ -294,6 +323,7 @@ void DataCollector::stop() {
     uwb_.reset();
     body_cmds_.clear();
     hand_cmds_.clear();
+    motion_token_.reset();
     running_ = false;
 }
 
