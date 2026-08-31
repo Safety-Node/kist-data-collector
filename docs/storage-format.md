@@ -23,7 +23,7 @@ sessions/<YYYYMMDD_HHMMSS>/
     color.h264            # Annex-B H.264 NAL units, appended frame by frame
     color.idx.csv         # seq,stamp_ns,recv_ns,width,height,is_keyframe,offset,size
     depth.rvl             # RVL bitstreams (lossless Z16), appended frame by frame
-    depth.idx.csv         # seq,stamp_ns,recv_ns,width,height,depth_scale,offset,size
+    depth.idx.csv         # seq,stamp_ns,recv_ns,width,height,depth_scale,fx,fy,cx,cy,offset,size
 ```
 
 Row-shaped streams (robot state, hands, UWB) go straight to CSV — small
@@ -46,6 +46,7 @@ carries the same description next to the data.
 | `width`, `height` | int | frame size (px) |
 | `is_keyframe` *(color only)* | 0/1 | IDR marker — decoding can start here |
 | `depth_scale` *(depth only)* | float | meters per Z16 unit (0.001 D435, 0.0001 D405) |
+| `fx`, `fy`, `cx`, `cy` *(depth only)* | float | pinhole intrinsics of the frame (px) — with align_to_color these are the color stream's, so a recorded depth frame deprojects to 3D offline: `X=(u-cx)*Z/fx`, `Y=(v-cy)*Z/fy` |
 | `offset`, `size` | uint64 | byte slice of this frame inside the blob file |
 
 ### `lowstate.csv` — 158 columns, ~1 kHz

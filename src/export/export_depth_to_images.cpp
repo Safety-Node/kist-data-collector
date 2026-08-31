@@ -24,7 +24,9 @@ struct Row {
     float    scale  = 0.001f;
 };
 
-// depth.idx.csv: seq,stamp_ns,recv_ns,width,height,depth_scale,offset,size
+// depth.idx.csv: seq,stamp_ns,recv_ns,width,height,depth_scale[,fx,fy,cx,cy],offset,size
+// The four intrinsics columns were added later; parse both layouts so older
+// recordings still export (the exporter only needs offset/size/w/h/scale).
 std::vector<Row> read_index(const std::filesystem::path& path) {
     std::vector<Row> rows;
     std::ifstream idx(path);
@@ -34,11 +36,15 @@ std::vector<Row> read_index(const std::filesystem::path& path) {
         unsigned long long seq, offset, size;
         long long stamp_ns, recv_ns;
         int w, h;
-        float scale;
-        if (std::sscanf(line.c_str(), "%llu,%lld,%lld,%d,%d,%f,%llu,%llu",
-                        &seq, &stamp_ns, &recv_ns, &w, &h, &scale, &offset, &size) != 8)
-            continue;
-        rows.push_back({seq, offset, size, w, h, scale});
+        float scale, fx, fy, cx, cy;
+        if (std::sscanf(line.c_str(), "%llu,%lld,%lld,%d,%d,%f,%f,%f,%f,%f,%llu,%llu",
+                        &seq, &stamp_ns, &recv_ns, &w, &h, &scale,
+                        &fx, &fy, &cx, &cy, &offset, &size) == 12) {
+            rows.push_back({seq, offset, size, w, h, scale});
+        } else if (std::sscanf(line.c_str(), "%llu,%lld,%lld,%d,%d,%f,%llu,%llu",
+                        &seq, &stamp_ns, &recv_ns, &w, &h, &scale, &offset, &size) == 8) {
+            rows.push_back({seq, offset, size, w, h, scale});
+        }
     }
     return rows;
 }
