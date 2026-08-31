@@ -31,6 +31,10 @@ inline RvlDepthFrame map_depth(const kist_msgs::CompressedDepthFrame& msg) {
     f.sequence    = msg.seq();
     f.stamp_ns    = msg.stamp_ns();
     f.depth_scale = msg.depth_scale();
+    f.fx          = msg.fx();
+    f.fy          = msg.fy();
+    f.cx          = msg.cx();
+    f.cy          = msg.cy();
     f.frame_id    = msg.frame_id();
     f.data        = msg.data();
     return f;

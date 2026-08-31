@@ -17,8 +17,10 @@ namespace kist {
 
 constexpr const char* kColorIdxHeader =
     "seq,stamp_ns,recv_ns,width,height,is_keyframe,offset,size";
+// fx,fy,cx,cy = pinhole intrinsics of the frame (px); recorded so a depth
+// frame can be deprojected into 3D offline without a separate calibration.
 constexpr const char* kDepthIdxHeader =
-    "seq,stamp_ns,recv_ns,width,height,depth_scale,offset,size";
+    "seq,stamp_ns,recv_ns,width,height,depth_scale,fx,fy,cx,cy,offset,size";
 
 inline std::string color_row(const H264ColorFrame& f, int64_t recv_ns) {
     char buf[160];
@@ -29,10 +31,12 @@ inline std::string color_row(const H264ColorFrame& f, int64_t recv_ns) {
 }
 
 inline std::string depth_row(const RvlDepthFrame& f, int64_t recv_ns) {
-    char buf[160];
-    std::snprintf(buf, sizeof(buf), "%" PRIu64 ",%" PRId64 ",%" PRId64 ",%d,%d,%.6g",
+    char buf[200];
+    std::snprintf(buf, sizeof(buf),
+                  "%" PRIu64 ",%" PRId64 ",%" PRId64 ",%d,%d,%.6g,%.6g,%.6g,%.6g,%.6g",
                   f.sequence, f.stamp_ns, recv_ns, f.width, f.height,
-                  double(f.depth_scale));
+                  double(f.depth_scale),
+                  double(f.fx), double(f.fy), double(f.cx), double(f.cy));
     return buf;
 }
 
