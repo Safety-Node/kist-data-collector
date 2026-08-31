@@ -1,14 +1,19 @@
 # kist-data-collector — storage-side recorder for kist-ext-sensor-io streams.
-# Rx-wire-path deps only: no librealsense/x264/libav/OpenCV (the collector
-# persists the compressed payloads verbatim, it never decodes), so a slim
-# ubuntu base instead of ext-sensor-io's tensorrt one. Same recipe otherwise:
-# unitree_sdk2 cloned (pinned) inside, idlc toolchain in /opt, repo copied in
-# and built at image-build time — `docker run` gives ready binaries.
-FROM ubuntu:22.04
+# The record path persists the compressed payloads verbatim (never decodes), so
+# it drops ext's Tx-side capture/encode deps (librealsense, x264) — just the DDS
+# + idlc toolchain. OpenCV/libav/ffmpeg are bundled only so the whole
+# record -> verify -> export -> play loop runs in this one container.
+# Base is plain ubuntu:24.04 (no CUDA), same as kist-ext-sensor-io. Recipe
+# mirrors ext otherwise: unitree_sdk2 cloned (pinned) inside, idlc toolchain in
+# /opt, repo copied in and built at image-build time — `docker run` gives
+# ready binaries.
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ─── build tools + deps ───────────────────────────────────────────────────────
+# ─── build tools + light deps ─────────────────────────────────────────────────
+# nano is baked in for editing the config without leaving the container (a
+# config change alone doesn't need an image rebuild).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -16,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     ca-certificates \
     libyaml-cpp-dev \
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── idlc toolchain (custom DDS IDL types) ────────────────────────────────────
@@ -53,12 +59,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# In-container quality of life: editing the baked config without leaving
-# the container (a config change alone doesn't need an image rebuild).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nano \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /workspace/kist-data-collector
 
 # ─── thirdparty: kist-ext-sensor-io (cloned + pinned) ─────────────────────────
@@ -68,8 +68,10 @@ WORKDIR /workspace/kist-data-collector
 # Placed before COPY so source edits don't re-clone; .dockerignore keeps any
 # local working copy out of the build context so this pinned clone wins.
 ARG EXT_SENSOR_IO_REPO=https://github.com/Safety-Node/kist-ext-sensor-io.git
-# a8de3ae: runner DDS routing + reader queue 30 + MTU-capped datagrams
-ARG EXT_SENSOR_IO_COMMIT=a8de3ae293ab55354fc28b054146f0d040ca7e55
+# 94848e6: depth frames now carry camera intrinsics (fx/fy/cx/cy) — the
+# CompressedDepthFrame IDL grew four fields, so the collector must build
+# against this ext to stay wire-compatible with the transmitter.
+ARG EXT_SENSOR_IO_COMMIT=94848e6989d1b10a36aa2651e9c91375e2875972
 RUN git clone "${EXT_SENSOR_IO_REPO}" thirdparty/kist-ext-sensor-io && \
     git -C thirdparty/kist-ext-sensor-io checkout "${EXT_SENSOR_IO_COMMIT}"
 
